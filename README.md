@@ -1,75 +1,26 @@
-# React + TypeScript + Vite
+Zion 🚀
+Aplicación de escritorio moderna desarrollada con React, TypeScript, Vite y Electron, diseñada con altos estándares de rendimiento y seguridad.
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+⚠️ Pautas de Uso y Restricciones (Copyright & Licencia)
+Este repositorio y su código fuente están protegidos por estrictas políticas de propiedad intelectual y derechos de autor:
 
-Currently, two official plugins are available:
+Prohibido clonar: No está permitida la clonación pública ni la redistribución no autorizada de este repositorio o sus fuentes.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+Prohibido modificar sin permiso: Queda estrictamente prohibido alterar, parchear, descompilar o modificar el código fuente y los binarios de esta aplicación sin el consentimiento previo y por escrito del autor (anime1234rr).
 
-## React Compiler
+Uso personal/restringido: Esta aplicación se ofrece para su uso exclusivo bajo los términos estipulados por el propietario. Cualquier intento de ingeniería inversa o suplantación violará los términos legales establecidos en el archivo LICENSE.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+🛠️ Personalización y Alternativas al Gusto del Usuario
+Si deseas adaptar, modificar o personalizar la experiencia de uso de Zion a tus propias necesidades sin infringir las normas de propiedad del código principal, puedes seguir las siguientes alternativas seguras:
 
-## Expanding the ESLint configuration
+Uso de Variables de Configuración:
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+Revisa si la aplicación expone archivos de configuración locales o variables de entorno permitidas para alternar modos de interfaz de manera oficial.
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+Desarrollo de Plugins o Scripts Externos (Extensiones):
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+En lugar de alterar el código fuente central de la app, puedes crear herramientas independientes que interactúen con las salidas de la aplicación de forma externa.
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+Solicitud de Nuevas Funcionalidades:
 
-```
-
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
-
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-
-```
+Si eres usuario autorizado y deseas ver una característica nueva o un cambio de diseño específico, puedes proponer mejoras directamente para que formen parte de futuras actualizaciones oficiales.
