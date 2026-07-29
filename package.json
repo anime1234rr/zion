@@ -1,7 +1,7 @@
 {
   "name": "zion",
   "private": true,
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "Zion",
   "author": "anime1234rr",
   "type": "module",
@@ -46,6 +46,7 @@
     "eslint-plugin-react-refresh": "^0.5.3",
     "globals": "^17.7.0",
     "postcss": "^8.5.24",
+    "resedit": "^1.7.2",
     "tailwindcss": "^4.3.3",
     "typescript": "~6.0.2",
     "typescript-eslint": "^8.62.0",
@@ -66,6 +67,7 @@
     "win": {
       "target": "nsis"
     },
+    "afterPack": "scripts/afterPack.mjs",
     "protocols": [
       {
         "name": "Zion Deep Link",
@@ -74,9 +76,11 @@
     ],
     "nsis": {
       "oneClick": false,
+      "perMachine": false,
       "allowToChangeInstallationDirectory": true,
       "shortcutName": "Zion",
-      "artifactName": "${productName}.${ext}"
+      "artifactName": "${productName}.${ext}",
+      "runAfterFinish": true
     },
     "publish": {
       "provider": "github",

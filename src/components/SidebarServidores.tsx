@@ -153,7 +153,12 @@ export function SidebarServidores({
           </TooltipTrigger>
           <TooltipContent side="right">Añadir servidor</TooltipContent>
         </Tooltip>
-        <DropdownMenuContent align="start" side="right" className="w-56">
+        <DropdownMenuContent
+          align="start"
+          side="right"
+          className="w-56"
+          collisionPadding={{ bottom: 20 }}
+        >
           <DropdownMenuItem onSelect={onCreateServer}>
             <Plus className="size-4" />
             Crear servidor

@@ -33,6 +33,7 @@ import type {
 } from '@/lib/types'
 
 import { AuthScreen } from '@/components/AuthScreen'
+import { UpdateBadge } from '@/components/UpdateBadge'
 import { SidebarServidores } from '@/components/SidebarServidores'
 import { PanelCanales } from '@/components/PanelCanales'
 import { ChatPrincipal } from '@/components/ChatPrincipal'
@@ -476,22 +477,21 @@ function AppShell({ userId }: { userId: string }) {
 function App() {
   const { user, loading } = useAuth()
 
-  if (loading) {
-    return (
-      <div className="flex h-screen w-screen items-center justify-center bg-background text-sm text-muted-foreground">
-        Cargando…
-      </div>
-    )
-  }
-
-  if (!user) {
-    return <AuthScreen />
-  }
-
   return (
-    <TooltipProvider>
-      <AppShell key={user.id} userId={user.id} />
-    </TooltipProvider>
+    <>
+      {loading ? (
+        <div className="flex h-screen w-screen items-center justify-center bg-background text-sm text-muted-foreground">
+          Cargando…
+        </div>
+      ) : !user ? (
+        <AuthScreen />
+      ) : (
+        <TooltipProvider>
+          <AppShell key={user.id} userId={user.id} />
+        </TooltipProvider>
+      )}
+      <UpdateBadge />
+    </>
   )
 }
 

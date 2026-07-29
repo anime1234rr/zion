@@ -1,12 +1,30 @@
 import { app, BrowserWindow, ipcMain, Menu } from 'electron'
-import electronUpdater from 'electron-updater'
+import electronUpdater, { type ProgressInfo, type UpdateInfo } from 'electron-updater'
 import log from 'electron-log'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const { autoUpdater } = electronUpdater
 autoUpdater.logger = log
+autoUpdater.autoDownload = false
+autoUpdater.autoInstallOnAppQuit = true
 log.transports.file.level = 'info'
+
+function serializarUpdateInfo(info: UpdateInfo) {
+  const notas = info.releaseNotes
+  const releaseNotes =
+    typeof notas === 'string'
+      ? notas
+      : Array.isArray(notas)
+        ? notas.map((n) => `v${n.version}\n${n.note ?? ''}`).join('\n\n')
+        : ''
+
+  return {
+    version: info.version,
+    releaseDate: info.releaseDate,
+    releaseNotes,
+  }
+}
 
 process.on('uncaughtException', (err) => {
   log.error('uncaughtException en el proceso principal', err)
@@ -31,6 +49,7 @@ const initialDeepLink =
 let win: BrowserWindow | null = null
 
 let allowClose = false
+let quitAndInstallPending = false
 
 function createWindow() {
   win = new BrowserWindow({
@@ -39,6 +58,7 @@ function createWindow() {
     minWidth: 1000,
     minHeight: 600,
     autoHideMenuBar: true,
+    show: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.mjs'),
       contextIsolation: true,
@@ -46,8 +66,18 @@ function createWindow() {
     },
   })
 
+  win.once('ready-to-show', () => {
+    win?.show()
+  })
+
   win.on('close', (event) => {
     if (allowClose || !win) return
+
+    if (quitAndInstallPending) {
+      allowClose = true
+      return
+    }
+
     event.preventDefault()
 
     const finishClosing = () => {
@@ -104,6 +134,28 @@ if (!gotLock) {
     log.error('Error en el renderer', info)
   })
 
+  ipcMain.handle('zion:check-for-updates', async () => {
+    if (!app.isPackaged) return null
+    try {
+      const resultado = await autoUpdater.checkForUpdates()
+      return resultado ? serializarUpdateInfo(resultado.updateInfo) : null
+    } catch (err) {
+      log.error('No se pudo verificar actualizaciones', err)
+      return null
+    }
+  })
+
+  ipcMain.on('zion:download-update', () => {
+    autoUpdater.downloadUpdate().catch((err) => {
+      log.error('No se pudo descargar la actualización', err)
+    })
+  })
+
+  ipcMain.on('zion:install-update', () => {
+    quitAndInstallPending = true
+    autoUpdater.quitAndInstall()
+  })
+
   app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') {
       app.quit()
@@ -114,12 +166,14 @@ if (!gotLock) {
   app.whenReady().then(() => {
     log.info('App lista, version', app.getVersion())
 
-    if (VITE_DEV_SERVER_URL) {
-      app.setAsDefaultProtocolClient(PROTOCOLO, process.execPath, [
-        path.resolve(process.argv[1]),
-      ])
-    } else {
-      app.setAsDefaultProtocolClient(PROTOCOLO)
+    if (!app.isDefaultProtocolClient(PROTOCOLO)) {
+      if (VITE_DEV_SERVER_URL) {
+        app.setAsDefaultProtocolClient(PROTOCOLO, process.execPath, [
+          path.resolve(process.argv[1]),
+        ])
+      } else {
+        app.setAsDefaultProtocolClient(PROTOCOLO)
+      }
     }
 
     createWindow()
@@ -134,17 +188,33 @@ if (!gotLock) {
     })
 
     if (app.isPackaged) {
-      autoUpdater.checkForUpdatesAndNotify().catch((err) => {
-        log.error('No se pudo verificar actualizaciones', err)
+      win?.once('ready-to-show', () => {
+        autoUpdater.checkForUpdates().catch((err) => {
+          log.error('No se pudo verificar actualizaciones', err)
+        })
       })
     }
   })
 }
 
-autoUpdater.on('error', (err) => {
-  log.error('Error en el auto-updater', err)
+autoUpdater.on('update-available', (info: UpdateInfo) => {
+  win?.webContents.send('zion-update-available', serializarUpdateInfo(info))
 })
 
-autoUpdater.on('update-downloaded', () => {
-  autoUpdater.quitAndInstall()
+autoUpdater.on('download-progress', (progress: ProgressInfo) => {
+  win?.webContents.send('zion-update-progress', {
+    percent: progress.percent,
+    bytesPerSecond: progress.bytesPerSecond,
+    transferred: progress.transferred,
+    total: progress.total,
+  })
+})
+
+autoUpdater.on('update-downloaded', (info: UpdateInfo) => {
+  win?.webContents.send('zion-update-downloaded', serializarUpdateInfo(info))
+})
+
+autoUpdater.on('error', (err) => {
+  log.error('Error en el auto-updater', err)
+  win?.webContents.send('zion-update-error', err.message)
 })
