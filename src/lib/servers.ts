@@ -1,0 +1,183 @@
+import { supabase } from '@/lib/supabase'
+import type { ChannelType, ServerItem } from '@/lib/types'
+
+interface ServidorRow {
+  id: string
+  nombre: string
+  icono_url: string | null
+  propietario_id: string
+  codigo_invitacion: string | null
+  creado_at: string
+}
+
+export const tipoCanalToChannelType: Record<string, ChannelType> = {
+  texto: 'text',
+  voz: 'voice',
+  codigo: 'code',
+  anuncios: 'announcement',
+}
+
+function mapServidorToServerItem(row: ServidorRow): ServerItem {
+  return {
+    id: row.id,
+    name: row.nombre,
+    ownerId: row.propietario_id,
+    iconUrl: row.icono_url ?? undefined,
+    inviteCode: row.codigo_invitacion ?? undefined,
+  }
+}
+
+export async function listarServidores(): Promise<ServerItem[]> {
+  const { data, error } = await supabase
+    .from('servidores')
+    .select('*')
+    .order('creado_at', { ascending: true })
+    .returns<ServidorRow[]>()
+
+  if (error) throw error
+  return (data ?? []).map(mapServidorToServerItem)
+}
+
+async function obtenerServidor(id: string): Promise<ServerItem | null> {
+  const { data, error } = await supabase
+    .from('servidores')
+    .select('*')
+    .eq('id', id)
+    .maybeSingle<ServidorRow>()
+
+  if (error) throw error
+  return data ? mapServidorToServerItem(data) : null
+}
+
+interface ServidoresRealtimeHandlers {
+  onServidorNuevoOActualizado: (servidor: ServerItem) => void
+  onServidorRemovido: (servidorId: string) => void
+}
+
+export function suscribirseAServidores(
+  usuarioId: string,
+  { onServidorNuevoOActualizado, onServidorRemovido }: ServidoresRealtimeHandlers
+) {
+  const channel = supabase
+    .channel(`servidores-usuario-${usuarioId}-${crypto.randomUUID()}`)
+    .on(
+      'postgres_changes',
+      {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'miembros_servidor',
+        filter: `usuario_id=eq.${usuarioId}`,
+      },
+      async (payload) => {
+        const servidorId = (payload.new as { servidor_id: string }).servidor_id
+        const servidor = await obtenerServidor(servidorId)
+        if (servidor) onServidorNuevoOActualizado(servidor)
+      }
+    )
+    .on(
+      'postgres_changes',
+      {
+        event: 'DELETE',
+        schema: 'public',
+        table: 'miembros_servidor',
+        filter: `usuario_id=eq.${usuarioId}`,
+      },
+      (payload) => {
+        const servidorId = (payload.old as { servidor_id: string }).servidor_id
+        onServidorRemovido(servidorId)
+      }
+    )
+    .on(
+      'postgres_changes',
+      { event: 'UPDATE', schema: 'public', table: 'servidores' },
+      (payload) => {
+        onServidorNuevoOActualizado(
+          mapServidorToServerItem(payload.new as ServidorRow)
+        )
+      }
+    )
+    .on(
+      'postgres_changes',
+      { event: 'DELETE', schema: 'public', table: 'servidores' },
+      (payload) => {
+        const servidorId = (payload.old as { id: string }).id
+        onServidorRemovido(servidorId)
+      }
+    )
+    .subscribe()
+
+  return () => {
+    supabase.removeChannel(channel)
+  }
+}
+
+export async function actualizarServidor(
+  servidorId: string,
+  cambios: { nombre?: string; iconoUrl?: string }
+): Promise<ServerItem> {
+  const patch: Record<string, string> = {}
+  if (cambios.nombre !== undefined) patch.nombre = cambios.nombre.trim()
+  if (cambios.iconoUrl !== undefined) patch.icono_url = cambios.iconoUrl
+
+  const { data, error } = await supabase
+    .from('servidores')
+    .update(patch)
+    .eq('id', servidorId)
+    .select('*')
+    .single<ServidorRow>()
+
+  if (error) throw error
+  return mapServidorToServerItem(data)
+}
+
+export async function crearServidor(
+  nombre: string,
+  iconoUrl?: string,
+  plantillaId?: string
+): Promise<ServerItem> {
+  const { data, error } = await supabase
+    .rpc('crear_servidor_con_plantilla', {
+      nombre_servidor: nombre,
+      icono_url: iconoUrl ?? null,
+      plantilla_id: plantillaId ?? null,
+    })
+    .single<ServidorRow>()
+
+  if (error) throw error
+  if (!data) throw new Error('No se pudo crear el servidor.')
+
+  return mapServidorToServerItem(data)
+}
+
+export async function unirseAServidor(codigoInvitacion: string): Promise<ServerItem> {
+  const { data, error } = await supabase
+    .rpc('unirse_a_servidor', { p_codigo_invitacion: codigoInvitacion })
+    .single<ServidorRow>()
+
+  if (error) throw error
+  if (!data) throw new Error('No se pudo unir al servidor.')
+
+  return mapServidorToServerItem(data)
+}
+
+export async function transferirTitularidad(
+  servidorId: string,
+  nuevoPropietarioId: string
+): Promise<ServerItem> {
+  const { data, error } = await supabase
+    .rpc('transferir_titularidad_servidor', {
+      p_servidor_id: servidorId,
+      p_nuevo_propietario_id: nuevoPropietarioId,
+    })
+    .single<ServidorRow>()
+
+  if (error) throw error
+  if (!data) throw new Error('No se pudo transferir la titularidad.')
+
+  return mapServidorToServerItem(data)
+}
+
+export async function eliminarServidor(servidorId: string): Promise<void> {
+  const { error } = await supabase.rpc('eliminar_servidor', { p_servidor_id: servidorId })
+  if (error) throw error
+}

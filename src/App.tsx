@@ -1,0 +1,498 @@
+import { useCallback, useEffect, useState } from 'react'
+
+import { useAuth } from '@/hooks/use-auth'
+import { obtenerPerfil } from '@/lib/profiles'
+import {
+  iniciarHeartbeat,
+  marcarConectado,
+  marcarDesconectadoPorCierre,
+  marcarDesconectadoPorCierreAwait,
+} from '@/lib/presence'
+import {
+  listarServidores,
+  suscribirseAServidores,
+} from '@/lib/servers'
+import { listarCanales, suscribirseACanalesDeServidor } from '@/lib/channels'
+import {
+  editarMensaje,
+  eliminarMensaje,
+  enviarMensaje,
+  listarMensajes,
+  suscribirseACanal,
+} from '@/lib/messages'
+import { parseZionLink } from '@/lib/deep-links'
+import { getInitialDeepLink, onBeforeQuit, onDeepLink, readyToQuit } from '@/lib/electron-bridge'
+import type {
+  ChannelCategory,
+  ChatAttachment,
+  ChatMessage,
+  ChatUser,
+  CodeBlock,
+  ReplyPreview,
+  ServerItem,
+} from '@/lib/types'
+
+import { AuthScreen } from '@/components/AuthScreen'
+import { SidebarServidores } from '@/components/SidebarServidores'
+import { PanelCanales } from '@/components/PanelCanales'
+import { ChatPrincipal } from '@/components/ChatPrincipal'
+import { PanelMiembros } from '@/components/PanelMiembros'
+import { CrearServidorDialog } from '@/components/CrearServidorDialog'
+import { UnirseServidorDialog } from '@/components/UnirseServidorDialog'
+import { VistaInicio } from '@/components/inicio/VistaInicio'
+import { ForwardMessageDialog } from '@/components/ForwardMessageDialog'
+import { TooltipProvider } from '@/components/ui/tooltip'
+
+type ViewMode = 'server' | 'dm'
+
+function upsertServer(list: ServerItem[], server: ServerItem): ServerItem[] {
+  const index = list.findIndex((item) => item.id === server.id)
+  if (index === -1) return [...list, server]
+  const next = [...list]
+  next[index] = server
+  return next
+}
+
+function AppShell({ userId }: { userId: string }) {
+  const { signOut, session } = useAuth()
+
+  const [view, setView] = useState<ViewMode>('server')
+  const [profile, setProfile] = useState<ChatUser | null>(null)
+  const [servers, setServers] = useState<ServerItem[]>([])
+  const [activeServerId, setActiveServerId] = useState<string | null>(null)
+  const [categories, setCategories] = useState<ChannelCategory[]>([])
+  const [activeChannelId, setActiveChannelId] = useState<string | null>(null)
+  const [messages, setMessages] = useState<ChatMessage[]>([])
+  const [createDialogOpen, setCreateDialogOpen] = useState(false)
+  const [joinDialogOpen, setJoinDialogOpen] = useState(false)
+  const [membersOpen, setMembersOpen] = useState(true)
+  const [pendingDmUserId, setPendingDmUserId] = useState<string | null>(null)
+  const [pendingConversation, setPendingConversation] = useState<{
+    conversationId: string
+    messageId?: string
+  } | null>(null)
+  const [replyingTo, setReplyingTo] = useState<ReplyPreview | null>(null)
+  const [forwardMessage, setForwardMessage] = useState<{
+    message: ChatMessage
+    sourceLabel: string
+  } | null>(null)
+  const [highlightMessageId, setHighlightMessageId] = useState<string | null>(null)
+
+  function handleSelectServer(serverId: string) {
+    setView('server')
+    setActiveServerId(serverId)
+  }
+
+  function handleMessageUser(targetUserId: string) {
+    setView('dm')
+    setPendingDmUserId(targetUserId)
+  }
+
+  useEffect(() => {
+    let cancelado = false
+    marcarConectado()
+      .catch((err) => console.error('No se pudo marcar como conectado', err))
+      .finally(() => {
+        if (cancelado) return
+        obtenerPerfil(userId)
+          .then((data) => !cancelado && setProfile(data))
+          .catch((err) => console.error('No se pudo cargar el perfil', err))
+      })
+
+    const detenerHeartbeat = iniciarHeartbeat()
+
+    return () => {
+      cancelado = true
+      detenerHeartbeat()
+    }
+  }, [userId])
+
+  useEffect(() => {
+    function handleBeforeUnload() {
+      if (session?.access_token) {
+        marcarDesconectadoPorCierre(session.access_token)
+      }
+    }
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
+  }, [session])
+
+  useEffect(() => {
+    return onBeforeQuit(() => {
+      marcarDesconectadoPorCierreAwait()
+        .catch((err) => console.error('No se pudo marcar como desconectado', err))
+        .finally(() => readyToQuit())
+    })
+  }, [])
+
+  useEffect(() => {
+    function handleDeepLink(url: string) {
+      const link = parseZionLink(url)
+      if (!link) return
+
+      if (link.type === 'channel-message') {
+        setView('server')
+        setActiveServerId(link.serverId)
+        setActiveChannelId(link.channelId)
+        setHighlightMessageId(link.messageId)
+      } else {
+        setView('dm')
+        setPendingConversation({ conversationId: link.conversationId, messageId: link.messageId })
+      }
+    }
+
+    getInitialDeepLink().then((url) => {
+      if (url) handleDeepLink(url)
+    })
+
+    return onDeepLink(handleDeepLink)
+  }, [])
+
+  useEffect(() => {
+    if (!highlightMessageId) return
+    const timeout = setTimeout(() => setHighlightMessageId(null), 2500)
+    return () => clearTimeout(timeout)
+  }, [highlightMessageId])
+
+  useEffect(() => {
+    let cancelado = false
+
+    listarServidores()
+      .then((data) => {
+        if (cancelado) return
+        setServers(data)
+        setActiveServerId((prev) => prev ?? data[0]?.id ?? null)
+      })
+      .catch((err) => console.error('No se pudieron cargar los servidores', err))
+
+    const unsubscribe = suscribirseAServidores(userId, {
+      onServidorNuevoOActualizado: (servidor) => {
+        setServers((prev) => upsertServer(prev, servidor))
+        setActiveServerId((prev) => prev ?? servidor.id)
+      },
+      onServidorRemovido: (servidorId) => {
+        setServers((prev) => prev.filter((s) => s.id !== servidorId))
+        setActiveServerId((prev) => (prev === servidorId ? null : prev))
+      },
+    })
+
+    return () => {
+      cancelado = true
+      unsubscribe()
+    }
+  }, [userId])
+
+  useEffect(() => {
+    if (!activeServerId) return
+
+    let cancelado = false
+
+    async function cargarCanales() {
+      try {
+        const data = await listarCanales(activeServerId as string)
+        if (cancelado) return
+        setCategories(data)
+        setActiveChannelId((prev) => {
+          const disponibles = data.flatMap((c) => c.channels)
+          if (prev && disponibles.some((ch) => ch.id === prev)) return prev
+          return disponibles[0]?.id ?? null
+        })
+      } catch (err) {
+        console.error('No se pudieron cargar los canales', err)
+      }
+    }
+
+    cargarCanales()
+    const unsubscribe = suscribirseACanalesDeServidor(activeServerId, cargarCanales)
+
+    return () => {
+      cancelado = true
+      unsubscribe()
+    }
+  }, [activeServerId])
+
+  useEffect(() => {
+    if (!activeChannelId) return
+
+    let cancelado = false
+    listarMensajes(activeChannelId)
+      .then((data) => {
+        if (!cancelado) setMessages(data)
+      })
+      .catch((err) => console.error('No se pudieron cargar los mensajes', err))
+
+    const unsubscribe = suscribirseACanal(activeChannelId, {
+      onNuevoMensaje: (mensaje) => {
+        setMessages((prev) =>
+          prev.some((m) => m.id === mensaje.id) ? prev : [...prev, mensaje]
+        )
+      },
+      onMensajeEditado: (mensaje) => {
+        setMessages((prev) => prev.map((m) => (m.id === mensaje.id ? mensaje : m)))
+      },
+      onMensajeEliminado: (mensajeId) => {
+        setMessages((prev) => prev.filter((m) => m.id !== mensajeId))
+      },
+    })
+
+    return () => {
+      cancelado = true
+      unsubscribe()
+    }
+  }, [activeChannelId])
+
+  async function handleChannelCreated() {
+    if (!activeServerId) return
+    try {
+      setCategories(await listarCanales(activeServerId))
+    } catch (err) {
+      console.error('No se pudieron recargar los canales', err)
+    }
+  }
+
+  async function handleChannelUpdated() {
+    if (!activeServerId) return
+    try {
+      setCategories(await listarCanales(activeServerId))
+    } catch (err) {
+      console.error('No se pudieron recargar los canales', err)
+    }
+  }
+
+  async function handleChannelDeleted(channelId: string) {
+    if (!activeServerId) return
+    try {
+      const data = await listarCanales(activeServerId)
+      setCategories(data)
+      setActiveChannelId((prev) =>
+        prev === channelId ? (data.flatMap((c) => c.channels)[0]?.id ?? null) : prev
+      )
+    } catch (err) {
+      console.error('No se pudieron recargar los canales', err)
+    }
+  }
+
+  const activeServer = servers.find((s) => s.id === activeServerId)
+
+  const activeChannel = categories
+    .flatMap((category) => category.channels)
+    .find((channel) => channel.id === activeChannelId)
+
+  const handleSendMessage = useCallback(
+    async (message: {
+      content?: string
+      code?: CodeBlock
+      attachment?: ChatAttachment
+      respuestaAId?: string
+    }) => {
+      if (!activeChannelId) return
+      try {
+        const nuevo = await enviarMensaje(activeChannelId, userId, message)
+        setMessages((prev) =>
+          prev.some((m) => m.id === nuevo.id) ? prev : [...prev, nuevo]
+        )
+        setReplyingTo(null)
+      } catch (err) {
+        console.error('No se pudo enviar el mensaje', err)
+      }
+    },
+    [activeChannelId, userId]
+  )
+
+  const handleEditMessage = useCallback(async (messageId: string, content: string) => {
+    try {
+      const editado = await editarMensaje(messageId, content)
+      setMessages((prev) => prev.map((m) => (m.id === editado.id ? editado : m)))
+    } catch (err) {
+      console.error('No se pudo editar el mensaje', err)
+    }
+  }, [])
+
+  const handleDeleteMessage = useCallback(async (messageId: string) => {
+    try {
+      await eliminarMensaje(messageId)
+      setMessages((prev) => prev.filter((m) => m.id !== messageId))
+    } catch (err) {
+      console.error('No se pudo borrar el mensaje', err)
+    }
+  }, [])
+
+  const handleReplyMessage = useCallback((message: ChatMessage) => {
+    setReplyingTo({
+      id: message.id,
+      authorName: message.author.name,
+      preview: message.content ?? (message.code ? 'Código' : 'Adjunto'),
+    })
+  }, [])
+
+  return (
+    <div className="flex h-screen w-screen overflow-hidden bg-background text-foreground">
+      <SidebarServidores
+        servers={servers}
+        activeServerId={activeServerId ?? ''}
+        view={view}
+        onSelectServer={handleSelectServer}
+        onSelectHome={() => setView('dm')}
+        onCreateServer={() => setCreateDialogOpen(true)}
+        onJoinServer={() => setJoinDialogOpen(true)}
+      />
+
+      {view === 'dm' ? (
+        <VistaInicio
+          currentUserId={userId}
+          pendingUserId={pendingDmUserId}
+          onPendingUserHandled={() => setPendingDmUserId(null)}
+          pendingConversation={pendingConversation}
+          onPendingConversationHandled={() => setPendingConversation(null)}
+        />
+      ) : (
+        <>
+          {activeServer && profile ? (
+            <PanelCanales
+              server={activeServer}
+              categories={categories}
+              activeChannelId={activeChannelId ?? ''}
+              onSelectChannel={setActiveChannelId}
+              currentUser={profile}
+              onSignOut={signOut}
+              onProfileUpdated={setProfile}
+              onServerUpdated={(servidor) =>
+                setServers((prev) => upsertServer(prev, servidor))
+              }
+              onServerDeleted={(serverId) => {
+                setServers((prev) => prev.filter((s) => s.id !== serverId))
+                setActiveServerId((prev) => (prev === serverId ? null : prev))
+              }}
+              onChannelCreated={handleChannelCreated}
+              onChannelUpdated={handleChannelUpdated}
+              onChannelDeleted={handleChannelDeleted}
+            />
+          ) : null}
+
+          {activeChannel && activeServer ? (
+            <ChatPrincipal
+              channel={activeChannel}
+              messages={messages}
+              onSendMessage={handleSendMessage}
+              server={activeServer}
+              currentUserId={userId}
+              membersOpen={membersOpen}
+              onToggleMembers={() => setMembersOpen((prev) => !prev)}
+              onMessageUser={handleMessageUser}
+              onEditMessage={handleEditMessage}
+              onDeleteMessage={handleDeleteMessage}
+              onReplyMessage={handleReplyMessage}
+              onForwardMessage={(message) =>
+                setForwardMessage({
+                  message,
+                  sourceLabel: `#${activeChannel.name} en ${activeServer.name}`,
+                })
+              }
+              replyingTo={replyingTo}
+              onCancelReply={() => setReplyingTo(null)}
+              highlightMessageId={highlightMessageId}
+              onNavigateToServer={handleSelectServer}
+            />
+          ) : (
+            <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
+              <p className="text-sm text-muted-foreground">
+                {servers.length === 0
+                  ? 'Todavía no tenés servidores.'
+                  : 'Elegí un canal para empezar a chatear.'}
+              </p>
+              {servers.length === 0 && (
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setCreateDialogOpen(true)}
+                    className="text-sm font-medium text-primary underline-offset-4 hover:underline"
+                  >
+                    Crear tu primer servidor
+                  </button>
+                  <span className="text-sm text-muted-foreground">o</span>
+                  <button
+                    type="button"
+                    onClick={() => setJoinDialogOpen(true)}
+                    className="text-sm font-medium text-primary underline-offset-4 hover:underline"
+                  >
+                    unirme con un código
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {activeServer && membersOpen && (
+            <PanelMiembros
+              server={activeServer}
+              currentUserId={userId}
+              onMessageUser={handleMessageUser}
+            />
+          )}
+        </>
+      )}
+
+      <CrearServidorDialog
+        open={createDialogOpen}
+        onOpenChange={setCreateDialogOpen}
+        onCreated={(servidor) => {
+          setServers((prev) => upsertServer(prev, servidor))
+          setActiveServerId(servidor.id)
+        }}
+      />
+
+      <UnirseServidorDialog
+        open={joinDialogOpen}
+        onOpenChange={setJoinDialogOpen}
+        onJoined={(servidor) => {
+          setServers((prev) => upsertServer(prev, servidor))
+          setActiveServerId(servidor.id)
+        }}
+      />
+
+      {forwardMessage && (
+        <ForwardMessageDialog
+          open={Boolean(forwardMessage)}
+          onOpenChange={(open) => !open && setForwardMessage(null)}
+          message={forwardMessage.message}
+          sourceLabel={forwardMessage.sourceLabel}
+          currentUserId={userId}
+        />
+      )}
+
+      {profile && (activeServerId === null || view === 'dm') && (
+        <button
+          type="button"
+          onClick={signOut}
+          className="fixed right-4 bottom-4 text-xs text-muted-foreground underline-offset-4 hover:underline"
+        >
+          Cerrar sesión
+        </button>
+      )}
+    </div>
+  )
+}
+
+function App() {
+  const { user, loading } = useAuth()
+
+  if (loading) {
+    return (
+      <div className="flex h-screen w-screen items-center justify-center bg-background text-sm text-muted-foreground">
+        Cargando…
+      </div>
+    )
+  }
+
+  if (!user) {
+    return <AuthScreen />
+  }
+
+  return (
+    <TooltipProvider>
+      <AppShell key={user.id} userId={user.id} />
+    </TooltipProvider>
+  )
+}
+
+export default App

@@ -1,0 +1,42 @@
+name: Release
+
+# Se dispara cada vez que package.json cambia en main (típicamente al
+# bumpear la versión) — no hace falta crear el tag a mano: electron-builder
+# lo crea solo (gracias a --publish always + build.publish en package.json)
+# apuntando a la versión que tenga package.json en ese momento. También se
+# puede disparar a mano desde la pestaña Actions con workflow_dispatch.-
+on:
+  push:
+    branches: [main]
+    paths:
+      - package.json
+  workflow_dispatch:
+
+# GITHUB_TOKEN necesita permiso de escritura para que electron-builder
+# pueda crear el release y subirle los binarios.
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build y publicar en GitHub Releases
+        run: npm run publish
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
