@@ -72,6 +72,7 @@ Menu.setApplicationMenu(menu)
 const gotLock = app.requestSingleInstanceLock()
 
 if (!gotLock) {
+  log.warn('Otra instancia de Zion ya tiene el lock — cerrando esta sin abrir ventana.')
   app.quit()
 } else {
   app.on('second-instance', (_event, argv) => {
