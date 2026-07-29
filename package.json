@@ -75,7 +75,8 @@
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
-      "shortcutName": "Zion"
+      "shortcutName": "Zion",
+      "artifactName": "${productName}.${ext}"
     },
     "publish": {
       "provider": "github",
