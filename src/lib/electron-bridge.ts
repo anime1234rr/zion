@@ -3,6 +3,7 @@ interface ElectronAPI {
   onDeepLink: (callback: (url: string) => void) => () => void
   onBeforeQuit: (callback: () => void) => () => void
   readyToQuit: () => void
+  reportError: (info: { message: string; stack?: string; context?: string }) => void
 }
 
 declare global {
@@ -25,4 +26,9 @@ export function onBeforeQuit(callback: () => void): () => void {
 
 export function readyToQuit(): void {
   window.electronAPI?.readyToQuit()
+}
+
+export function reportError(message: string, stack?: string, context?: string): void {
+  console.error(context ? `[${context}]` : '[error]', message, stack)
+  window.electronAPI?.reportError({ message, stack, context })
 }

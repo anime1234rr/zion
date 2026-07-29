@@ -8,6 +8,15 @@ const { autoUpdater } = electronUpdater
 autoUpdater.logger = log
 log.transports.file.level = 'info'
 
+process.on('uncaughtException', (err) => {
+  log.error('uncaughtException en el proceso principal', err)
+  app.exit(1)
+})
+
+process.on('unhandledRejection', (reason) => {
+  log.error('unhandledRejection en el proceso principal', reason)
+})
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 process.env.APP_ROOT = path.join(__dirname, '..')
@@ -91,6 +100,10 @@ if (!gotLock) {
 
   ipcMain.handle('zion:get-initial-deep-link', () => initialDeepLink)
 
+  ipcMain.on('zion-renderer-error', (_event, info: { message: string; stack?: string; context?: string }) => {
+    log.error('Error en el renderer', info)
+  })
+
   app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') {
       app.quit()
@@ -99,6 +112,8 @@ if (!gotLock) {
   })
 
   app.whenReady().then(() => {
+    log.info('App lista, version', app.getVersion())
+
     if (VITE_DEV_SERVER_URL) {
       app.setAsDefaultProtocolClient(PROTOCOLO, process.execPath, [
         path.resolve(process.argv[1]),
@@ -108,6 +123,15 @@ if (!gotLock) {
     }
 
     createWindow()
+    log.info('Ventana principal creada')
+
+    win?.webContents.on('did-fail-load', (_event, errorCode, errorDescription) => {
+      log.error('La ventana falló al cargar', { errorCode, errorDescription })
+    })
+
+    win?.webContents.on('render-process-gone', (_event, details) => {
+      log.error('El proceso de renderizado terminó inesperadamente', details)
+    })
 
     if (app.isPackaged) {
       autoUpdater.checkForUpdatesAndNotify().catch((err) => {

@@ -16,4 +16,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   readyToQuit: (): void => {
     ipcRenderer.send('zion-ready-to-quit')
   },
+  reportError: (info: { message: string; stack?: string; context?: string }): void => {
+    ipcRenderer.send('zion-renderer-error', info)
+  },
 })

@@ -29,6 +29,20 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: Crear y pushear el tag de versión
+        shell: bash
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          TAG="v${VERSION}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "El tag $TAG ya existe, no hace falta crearlo de nuevo."
+          else
+            git tag "$TAG"
+            git push origin "$TAG"
+          fi
+
       - name: Build y publicar en GitHub Releases
         run: npm run publish
         env:

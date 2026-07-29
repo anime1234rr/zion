@@ -8,6 +8,33 @@
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      function zionShowFatalFallback(message) {
+        var root = document.getElementById('root')
+        if (!root || root.childElementCount > 0) return
+        root.innerHTML =
+          '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;height:100vh;width:100vw;background:#0a0a0a;color:#fafafa;text-align:center;font-family:sans-serif;padding:0 16px;">' +
+          '<p style="font-size:18px;font-weight:600;">Zion encontró un error inesperado</p>' +
+          '<p style="max-width:32rem;font-size:14px;color:#a1a1aa;">' + message + '</p>' +
+          '<button onclick="window.location.reload()" style="padding:8px 16px;border-radius:8px;background:#6366f1;color:white;border:none;cursor:pointer;">Recargar</button>' +
+          '</div>'
+      }
+      window.addEventListener('error', (event) => {
+        const message = event.error instanceof Error ? event.error.message : String(event.message)
+        const stack = event.error instanceof Error ? event.error.stack : undefined
+        console.error('[window-error]', message, stack)
+        window.electronAPI?.reportError({ message, stack, context: 'window-error' })
+        zionShowFatalFallback(message)
+      })
+      window.addEventListener('unhandledrejection', (event) => {
+        const reason = event.reason
+        const message = reason instanceof Error ? reason.message : String(reason)
+        const stack = reason instanceof Error ? reason.stack : undefined
+        console.error('[unhandledrejection]', message, stack)
+        window.electronAPI?.reportError({ message, stack, context: 'unhandledrejection' })
+        zionShowFatalFallback(message)
+      })
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
