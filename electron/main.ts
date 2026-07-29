@@ -153,7 +153,7 @@ if (!gotLock) {
 
   ipcMain.on('zion:install-update', () => {
     quitAndInstallPending = true
-    autoUpdater.quitAndInstall()
+    autoUpdater.quitAndInstall(true, true)
   })
 
   app.on('window-all-closed', () => {
