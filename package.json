@@ -80,7 +80,9 @@
     "publish": {
       "provider": "github",
       "owner": "anime1234rr",
-      "repo": "zion"
+      "repo": "zion",
+      "draft": false,
+      "prerelease": false
     }
   }
 }
