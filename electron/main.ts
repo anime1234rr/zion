@@ -50,7 +50,7 @@ let win: BrowserWindow | null = null
 
 let allowClose = false
 let quitAndInstallPending = false
-
+//MODIFICADO
 function createWindow() {
   win = new BrowserWindow({
     width: 1280,
