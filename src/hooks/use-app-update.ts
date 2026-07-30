@@ -12,41 +12,59 @@ import {
   type UpdateProgressPayload,
 } from '@/lib/electron-bridge'
 
-export type AppUpdateStatus = 'idle' | 'available' | 'downloading' | 'downloaded' | 'error'
+export type AppUpdateStatus = 'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'error'
 
 export function useAppUpdate() {
   const [status, setStatus] = useState<AppUpdateStatus>('idle')
   const [info, setInfo] = useState<UpdateInfoPayload | null>(null)
   const [progress, setProgress] = useState<UpdateProgressPayload | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [everShown, setEverShown] = useState(false)
 
-  useEffect(() => {
-    checkForUpdates().then((result) => {
+  function resolveCheck() {
+    return checkForUpdates().then((result) => {
       if (result) {
         setInfo(result)
         setStatus('available')
+        setEverShown(true)
+      } else {
+        setStatus((prev) => (prev === 'checking' ? 'idle' : prev))
       }
     })
+  }
+
+  function retryCheck() {
+    setError(null)
+    setStatus('checking')
+    resolveCheck()
+  }
+
+  useEffect(() => {
+    resolveCheck()
 
     const unsubAvailable = onUpdateAvailable((result) => {
       setInfo(result)
       setError(null)
       setStatus('available')
+      setEverShown(true)
     })
 
     const unsubProgress = onUpdateProgress((value) => {
       setProgress(value)
       setStatus('downloading')
+      setEverShown(true)
     })
 
     const unsubDownloaded = onUpdateDownloaded((result) => {
       setInfo(result)
       setStatus('downloaded')
+      setEverShown(true)
     })
 
     const unsubError = onUpdateError((message) => {
       setError(message)
       setStatus('error')
+      setEverShown(true)
     })
 
     return () => {
@@ -68,5 +86,5 @@ export function useAppUpdate() {
     installUpdate()
   }
 
-  return { status, info, progress, error, download, install }
+  return { status, info, progress, error, everShown, download, install, retryCheck }
 }

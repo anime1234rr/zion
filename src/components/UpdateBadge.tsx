@@ -1,4 +1,4 @@
-import { Download, RefreshCw, Sparkles, TriangleAlert } from 'lucide-react'
+import { Download, Loader2, RefreshCw, Sparkles, TriangleAlert } from 'lucide-react'
 
 import { useAppUpdate } from '@/hooks/use-app-update'
 import { Button } from '@/components/ui/button'
@@ -20,9 +20,10 @@ function formatVelocidad(bytesPerSecond: number): string {
 }
 
 export function UpdateBadge() {
-  const { status, info, progress, error, download, install } = useAppUpdate()
+  const { status, info, progress, error, everShown, download, install, retryCheck } = useAppUpdate()
 
   if (status === 'idle') return null
+  if (status === 'checking' && !everShown) return null
 
   const percent = Math.round(progress?.percent ?? 0)
 
@@ -36,10 +37,12 @@ export function UpdateBadge() {
         >
           {status === 'error' ? (
             <TriangleAlert className="size-4 text-destructive" />
+          ) : status === 'checking' ? (
+            <Loader2 className="size-4 animate-spin text-muted-foreground" />
           ) : (
             <Sparkles className="size-4 text-primary" />
           )}
-          <span>Actualización disponible</span>
+          <span>{status === 'checking' ? 'Comprobando actualizaciones…' : 'Actualización disponible'}</span>
         </button>
       </DialogTrigger>
 
@@ -77,6 +80,13 @@ export function UpdateBadge() {
           </div>
         )}
 
+        {status === 'checking' && (
+          <p className="flex items-center gap-2 text-xs text-muted-foreground">
+            <Loader2 className="size-3.5 animate-spin" />
+            Comprobando actualizaciones…
+          </p>
+        )}
+
         {status === 'error' && error && (
           <p className="text-xs text-destructive" role="alert">
             {error}
@@ -84,6 +94,13 @@ export function UpdateBadge() {
         )}
 
         <DialogFooter>
+          {status === 'checking' && (
+            <Button disabled className="gap-2">
+              <Loader2 className="size-4 animate-spin" />
+              Comprobando…
+            </Button>
+          )}
+
           {status === 'available' && (
             <Button onClick={download} className="gap-2">
               <Download className="size-4" />
@@ -106,7 +123,7 @@ export function UpdateBadge() {
           )}
 
           {status === 'error' && (
-            <Button variant="outline" onClick={download} className="gap-2">
+            <Button variant="outline" onClick={retryCheck} className="gap-2">
               <RefreshCw className="size-4" />
               Reintentar
             </Button>

@@ -138,7 +138,7 @@ if (!gotLock) {
     if (!app.isPackaged) return null
     try {
       const resultado = await autoUpdater.checkForUpdates()
-      return resultado ? serializarUpdateInfo(resultado.updateInfo) : null
+      return resultado?.isUpdateAvailable ? serializarUpdateInfo(resultado.updateInfo) : null
     } catch (err) {
       log.error('No se pudo verificar actualizaciones', err)
       return null
