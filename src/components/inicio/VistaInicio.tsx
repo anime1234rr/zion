@@ -19,6 +19,9 @@ import { ForwardMessageDialog } from '@/components/ForwardMessageDialog'
 
 interface VistaInicioProps {
   currentUserId: string
+  profile: ChatUser | null
+  onSignOut?: () => void
+  onProfileUpdated?: (user: ChatUser) => void
   pendingUserId?: string | null
   onPendingUserHandled?: () => void
   pendingConversation?: { conversationId: string; messageId?: string } | null
@@ -27,6 +30,9 @@ interface VistaInicioProps {
 
 export function VistaInicio({
   currentUserId,
+  profile,
+  onSignOut,
+  onProfileUpdated,
   pendingUserId,
   onPendingUserHandled,
   pendingConversation,
@@ -171,6 +177,9 @@ export function VistaInicio({
     <div className="flex h-full flex-1">
       <FriendsSidebar
         currentUserId={currentUserId}
+        profile={profile}
+        onSignOut={onSignOut}
+        onProfileUpdated={onProfileUpdated}
         activeConversationId={activeConversation?.id ?? null}
         onSelectConversation={handleSelectConversation}
         onMessageUser={handleMessageUser}

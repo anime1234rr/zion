@@ -1,9 +1,10 @@
 import { useRef, useState } from 'react'
-import { ImagePlus } from 'lucide-react'
+import { Check, Copy, ImagePlus } from 'lucide-react'
 
 import { useAuth } from '@/hooks/use-auth'
 import { actualizarServidor } from '@/lib/servers'
 import { subirIconoServidor } from '@/lib/storage'
+import { buildInviteLink } from '@/lib/deep-links'
 import { cn, getErrorMessage } from '@/lib/utils'
 import type { ServerItem } from '@/lib/types'
 import { Button } from '@/components/ui/button'
@@ -24,7 +25,15 @@ export function GeneralSection({ server, canEdit, onUpdated }: GeneralSectionPro
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
+  const [copiedLink, setCopiedLink] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  async function handleCopyInviteLink() {
+    if (!server.inviteCode) return
+    await navigator.clipboard.writeText(buildInviteLink(server.inviteCode))
+    setCopiedLink(true)
+    setTimeout(() => setCopiedLink(false), 1500)
+  }
 
   function handlePickIcon(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0]
@@ -134,11 +143,20 @@ export function GeneralSection({ server, canEdit, onUpdated }: GeneralSectionPro
       </form>
 
       {server.inviteCode && (
-        <div className="mt-8 border-t border-border pt-6">
-          <Label>Código de invitación</Label>
-          <code className="mt-1.5 block w-fit rounded-lg border border-input bg-muted/40 px-3 py-2 font-mono text-sm">
-            {server.inviteCode}
-          </code>
+        <div className="mt-8 w-full overflow-hidden border-t border-border pt-6">
+          <Label>Enlace de invitación</Label>
+          <div className="mt-1.5 flex w-full items-center justify-between gap-2 overflow-hidden rounded-lg border border-input bg-muted/40 p-2">
+            <div className="min-w-0 flex-1 overflow-hidden px-1">
+              <code className="min-w-0 truncate font-mono text-xs text-foreground sm:text-sm">
+                {buildInviteLink(server.inviteCode)}
+              </code>
+            </div>
+            <Button type="button" size="sm" onClick={handleCopyInviteLink} className="shrink-0">
+              {copiedLink ? <Check className="size-4" /> : <Copy className="size-4" />}
+              <span className="ml-1.5 hidden sm:inline">{copiedLink ? 'Copiado' : 'Copiar'}</span>
+              <span className="ml-1.5 sm:hidden">{copiedLink ? 'Cop.' : 'Copiar'}</span>
+            </Button>
+          </div>
         </div>
       )}
     </div>

@@ -13,6 +13,7 @@ import type { ChatUser, DMConversation, Friend } from '@/lib/types'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Input } from '@/components/ui/input'
 import { FriendRow } from '@/components/inicio/FriendRow'
+import { PerfilUsuario } from '@/components/PerfilUsuario'
 
 type Tab = 'online' | 'todos' | 'pendientes' | 'bloqueados'
 
@@ -25,16 +26,22 @@ const TABS: { id: Tab; label: string }[] = [
 
 interface FriendsSidebarProps {
   currentUserId: string
+  profile: ChatUser | null
   activeConversationId: string | null
   onSelectConversation: (conversationId: string, otherUser: ChatUser) => void
   onMessageUser: (userId: string) => void
+  onSignOut?: () => void
+  onProfileUpdated?: (user: ChatUser) => void
 }
 
 export function FriendsSidebar({
   currentUserId,
+  profile,
   activeConversationId,
   onSelectConversation,
   onMessageUser,
+  onSignOut,
+  onProfileUpdated,
 }: FriendsSidebarProps) {
   const [tab, setTab] = useState<Tab>('online')
   const [friends, setFriends] = useState<Friend[]>([])
@@ -271,6 +278,14 @@ export function FriendsSidebar({
           </>
         )}
       </div>
+
+      {profile && (
+        <PerfilUsuario
+          user={profile}
+          onSignOut={onSignOut}
+          onProfileUpdated={onProfileUpdated}
+        />
+      )}
     </aside>
   )
 }

@@ -1,6 +1,7 @@
 import { useState } from 'react'
-import { Check, Copy } from 'lucide-react'
+import { Check, Copy, Link as LinkIcon } from 'lucide-react'
 
+import { buildInviteLink } from '@/lib/deep-links'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -23,39 +24,56 @@ export function InvitarDialog({
   serverName,
   inviteCode,
 }: InvitarDialogProps) {
-  const [copied, setCopied] = useState(false)
+  const [copiedLink, setCopiedLink] = useState(false)
+  const [copiedCode, setCopiedCode] = useState(false)
 
-  async function handleCopy() {
+  async function handleCopyLink() {
+    if (!inviteCode) return
+    await navigator.clipboard.writeText(buildInviteLink(inviteCode))
+    setCopiedLink(true)
+    setTimeout(() => setCopiedLink(false), 1500)
+  }
+
+  async function handleCopyCode() {
     if (!inviteCode) return
     await navigator.clipboard.writeText(inviteCode)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 1500)
+    setCopiedCode(true)
+    setTimeout(() => setCopiedCode(false), 1500)
   }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="w-full max-w-md overflow-hidden">
         <DialogHeader>
           <DialogTitle>Invitar a {serverName}</DialogTitle>
           <DialogDescription>
-            Compartí este código. Cualquiera puede usarlo para unirse desde
-            "Unirme a un servidor".
+            Compartí este enlace. Con un clic, quien lo abra se une directamente.
           </DialogDescription>
         </DialogHeader>
 
         {inviteCode ? (
-          <div className="mt-2 flex items-center gap-2 rounded-lg border border-input bg-muted/40 px-3 py-2">
-            <code className="flex-1 truncate font-mono text-sm">
-              {inviteCode}
-            </code>
-            <Button type="button" size="sm" onClick={handleCopy}>
-              {copied ? (
-                <Check className="size-4" />
-              ) : (
-                <Copy className="size-4" />
-              )}
-              {copied ? 'Copiado' : 'Copiar'}
-            </Button>
+          <div className="mt-2 flex flex-col gap-3 w-full overflow-hidden">
+            <div className="flex w-full items-center justify-between gap-2 overflow-hidden rounded-lg border border-input bg-muted/40 p-2">
+              <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden px-1">
+                <LinkIcon className="size-4 shrink-0 text-muted-foreground" />
+                <code className="min-w-0 truncate font-mono text-xs sm:text-sm text-foreground">
+                  {buildInviteLink(inviteCode)}
+                </code>
+              </div>
+              <Button type="button" size="sm" onClick={handleCopyLink} className="shrink-0">
+                {copiedLink ? <Check className="size-4" /> : <Copy className="size-4" />}
+                <span className="ml-1.5 hidden sm:inline">{copiedLink ? 'Copiado' : 'Copiar enlace'}</span>
+                <span className="ml-1.5 sm:hidden">{copiedLink ? 'Cop.' : 'Copiar'}</span>
+              </Button>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleCopyCode}
+              className="self-start text-xs text-muted-foreground underline-offset-4 hover:underline truncate max-w-full"
+            >
+              {copiedCode ? 'Código copiado ✓' : `o copiá solo el código: ${inviteCode}`}
+            </button>
           </div>
         ) : (
           <p className="mt-2 text-sm text-muted-foreground">

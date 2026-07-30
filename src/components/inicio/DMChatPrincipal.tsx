@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState } from 'react'
-import { Check, Code2, Copy, MoreHorizontal, Paperclip, Send, Smile, X } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Check, Code2, Copy, ImageUp, MoreHorizontal, Paperclip, Send, Smile, X } from 'lucide-react'
 
 import { buildDMMessageLink } from '@/lib/deep-links'
 import { cn, getErrorMessage } from '@/lib/utils'
-import { parseFencedCode } from '@/lib/code-fence'
+import { formatFencedCode, parseFencedCode } from '@/lib/code-fence'
 import { groupMessages } from '@/lib/message-grouping'
 import { CHAT_ADJUNTO_ACCEPT, subirArchivoChat } from '@/lib/storage'
 import { useMessageActions } from '@/hooks/use-message-actions'
@@ -29,6 +29,11 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+
+function messageToRawText(message: Pick<ChatMessage, 'content' | 'code'>): string {
+  if (message.code) return formatFencedCode(message.code)
+  return message.content ?? ''
+}
 
 function CodeBlock({ language, code }: CodeBlockData) {
   const [copied, setCopied] = useState(false)
@@ -81,14 +86,14 @@ function MessageRow({
   highlighted,
 }: MessageRowProps) {
   const [editing, setEditing] = useState(false)
-  const [editDraft, setEditDraft] = useState(message.content ?? '')
+  const [editDraft, setEditDraft] = useState(messageToRawText(message))
   const isOwnMessage = message.author.id === currentUserId
 
   const actions = useMessageActions({
     isOwnMessage,
     canDeleteOthers: false,
     onEdit: () => {
-      setEditDraft(message.content ?? '')
+      setEditDraft(messageToRawText(message))
       setEditing(true)
     },
     onDelete: () => onDeleteMessage(message.id),
@@ -170,20 +175,23 @@ function MessageRow({
                 </p>
               )}
               {message.code && <CodeBlock language={message.code.language} code={message.code.code} />}
-              {message.attachment &&
-                (message.attachment.type === 'image' ? (
-                  <img
-                    src={message.attachment.url}
-                    alt=""
-                    className="mt-1 max-h-80 max-w-full rounded-lg border border-border sm:max-w-sm"
-                  />
-                ) : (
-                  <video
-                    src={message.attachment.url}
-                    controls
-                    className="mt-1 max-h-80 max-w-full rounded-lg border border-border sm:max-w-sm"
-                  />
-                ))}
+              {message.attachment && (
+                <div className="mt-1 max-h-80 w-fit max-w-full overflow-hidden rounded-lg border border-border sm:max-w-sm">
+                  {message.attachment.type === 'image' ? (
+                    <img
+                      src={message.attachment.url}
+                      alt=""
+                      className="max-h-80 max-w-full"
+                    />
+                  ) : (
+                    <video
+                      src={message.attachment.url}
+                      controls
+                      className="max-h-80 max-w-full"
+                    />
+                  )}
+                </div>
+              )}
             </>
           )}
 
@@ -265,9 +273,23 @@ export function DMChatPrincipal({
   const [pendingFile, setPendingFile] = useState<File | null>(null)
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
+  const [isDraggingFile, setIsDraggingFile] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const scrollBottomRef = useRef<HTMLDivElement>(null)
+  const dragCounterRef = useRef(0)
   const groups = groupMessages(messages)
+
+  const pendingPreviewUrl = useMemo(
+    () => (pendingFile ? URL.createObjectURL(pendingFile) : null),
+    [pendingFile]
+  )
+
+  useEffect(() => {
+    return () => {
+      if (pendingPreviewUrl) URL.revokeObjectURL(pendingPreviewUrl)
+    }
+  }, [pendingPreviewUrl])
+
   useEffect(() => {
     if (highlightMessageId) return
     scrollBottomRef.current?.scrollIntoView({ block: 'end' })
@@ -283,6 +305,36 @@ export function DMChatPrincipal({
   function handlePickFile(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0]
     event.target.value = ''
+    if (file) {
+      setUploadError(null)
+      setPendingFile(file)
+    }
+  }
+
+  function handleDragEnter(event: React.DragEvent) {
+    if (!event.dataTransfer.types.includes('Files')) return
+    event.preventDefault()
+    dragCounterRef.current += 1
+    setIsDraggingFile(true)
+  }
+
+  function handleDragOver(event: React.DragEvent) {
+    if (!event.dataTransfer.types.includes('Files')) return
+    event.preventDefault()
+  }
+
+  function handleDragLeave(event: React.DragEvent) {
+    if (!event.dataTransfer.types.includes('Files')) return
+    event.preventDefault()
+    dragCounterRef.current = Math.max(0, dragCounterRef.current - 1)
+    if (dragCounterRef.current === 0) setIsDraggingFile(false)
+  }
+
+  function handleDrop(event: React.DragEvent) {
+    event.preventDefault()
+    dragCounterRef.current = 0
+    setIsDraggingFile(false)
+    const file = event.dataTransfer.files?.[0]
     if (file) {
       setUploadError(null)
       setPendingFile(file)
@@ -329,7 +381,20 @@ export function DMChatPrincipal({
   }
 
   return (
-    <section className="flex h-full min-w-0 flex-1 flex-col bg-background">
+    <section
+      className="relative flex h-full min-w-0 flex-1 flex-col overflow-hidden bg-background"
+      onDragEnter={handleDragEnter}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
+      {isDraggingFile && (
+        <div className="pointer-events-none absolute inset-2 z-10 flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-primary bg-background/90 text-primary">
+          <ImageUp className="size-8" />
+          <p className="text-sm font-medium">Soltá para adjuntar imagen, GIF o video</p>
+        </div>
+      )}
+
       <header className="flex h-12 shrink-0 items-center gap-2 border-b border-border px-4">
         <Avatar size="sm">
           {otherUser.avatarUrl && <AvatarImage src={otherUser.avatarUrl} />}
@@ -398,9 +463,19 @@ export function DMChatPrincipal({
             </button>
           </div>
         )}
-        {pendingFile && (
-          <div className="mb-1.5 flex items-center gap-2 rounded-lg border border-border bg-muted/40 px-2.5 py-1.5 text-xs text-muted-foreground">
-            <Paperclip className="size-3.5 shrink-0" />
+        {pendingFile && pendingPreviewUrl && (
+          <div className="mb-1.5 flex items-center gap-2 overflow-hidden rounded-lg border border-border bg-muted/40 p-1.5 text-xs text-muted-foreground">
+            <div className="max-h-28 w-fit max-w-40 shrink-0 overflow-hidden rounded-md border border-border bg-background">
+              {pendingFile.type.startsWith('video/') ? (
+                <video src={pendingPreviewUrl} className="max-h-28 max-w-40" muted />
+              ) : pendingFile.type.startsWith('image/') ? (
+                <img src={pendingPreviewUrl} alt="" className="max-h-28 max-w-40" />
+              ) : (
+                <div className="flex size-16 items-center justify-center">
+                  <Paperclip className="size-4" />
+                </div>
+              )}
+            </div>
             <span className="min-w-0 flex-1 truncate">
               {uploading ? `Subiendo ${pendingFile.name}…` : pendingFile.name}
             </span>
@@ -409,7 +484,7 @@ export function DMChatPrincipal({
               onClick={() => setPendingFile(null)}
               disabled={uploading}
               aria-label="Quitar archivo adjunto"
-              className="flex size-5 shrink-0 items-center justify-center rounded outline-none hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-40"
+              className="flex size-5 shrink-0 items-center justify-center self-start rounded outline-none hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-40"
             >
               <X className="size-3.5" />
             </button>

@@ -3,6 +3,7 @@ const PROTOCOLO = 'zion'
 export type ZionLink =
   | { type: 'channel-message'; serverId: string; channelId: string; messageId: string }
   | { type: 'dm-message'; conversationId: string; messageId: string }
+  | { type: 'invite'; code: string }
 
 export function buildChannelMessageLink(
   serverId: string,
@@ -14,6 +15,10 @@ export function buildChannelMessageLink(
 
 export function buildDMMessageLink(conversationId: string, messageId: string): string {
   return `${PROTOCOLO}://dm/${conversationId}/mensaje/${messageId}`
+}
+
+export function buildInviteLink(codigoInvitacion: string): string {
+  return `${PROTOCOLO}://invitar/${encodeURIComponent(codigoInvitacion)}`
 }
 
 export function parseZionLink(url: string): ZionLink | null {
@@ -45,6 +50,10 @@ export function parseZionLink(url: string): ZionLink | null {
       conversationId: segments[1],
       messageId: segments[3],
     }
+  }
+
+  if (segments[0] === 'invitar' && segments[1]) {
+    return { type: 'invite', code: segments[1] }
   }
 
   return null

@@ -37,9 +37,11 @@ import { UpdateBadge } from '@/components/UpdateBadge'
 import { SidebarServidores } from '@/components/SidebarServidores'
 import { PanelCanales } from '@/components/PanelCanales'
 import { ChatPrincipal } from '@/components/ChatPrincipal'
+import { VoiceChannelPlaceholder } from '@/components/VoiceChannelPlaceholder'
 import { PanelMiembros } from '@/components/PanelMiembros'
 import { CrearServidorDialog } from '@/components/CrearServidorDialog'
 import { UnirseServidorDialog } from '@/components/UnirseServidorDialog'
+import { InvitePreviewDialog } from '@/components/InvitePreviewDialog'
 import { VistaInicio } from '@/components/inicio/VistaInicio'
 import { ForwardMessageDialog } from '@/components/ForwardMessageDialog'
 import { TooltipProvider } from '@/components/ui/tooltip'
@@ -66,6 +68,7 @@ function AppShell({ userId }: { userId: string }) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
   const [joinDialogOpen, setJoinDialogOpen] = useState(false)
+  const [pendingInviteCode, setPendingInviteCode] = useState<string | null>(null)
   const [membersOpen, setMembersOpen] = useState(true)
   const [pendingDmUserId, setPendingDmUserId] = useState<string | null>(null)
   const [pendingConversation, setPendingConversation] = useState<{
@@ -136,9 +139,11 @@ function AppShell({ userId }: { userId: string }) {
         setActiveServerId(link.serverId)
         setActiveChannelId(link.channelId)
         setHighlightMessageId(link.messageId)
-      } else {
+      } else if (link.type === 'dm-message') {
         setView('dm')
         setPendingConversation({ conversationId: link.conversationId, messageId: link.messageId })
+      } else {
+        setPendingInviteCode(link.code)
       }
     }
 
@@ -341,6 +346,9 @@ function AppShell({ userId }: { userId: string }) {
       {view === 'dm' ? (
         <VistaInicio
           currentUserId={userId}
+          profile={profile}
+          onSignOut={signOut}
+          onProfileUpdated={setProfile}
           pendingUserId={pendingDmUserId}
           onPendingUserHandled={() => setPendingDmUserId(null)}
           pendingConversation={pendingConversation}
@@ -370,7 +378,9 @@ function AppShell({ userId }: { userId: string }) {
             />
           ) : null}
 
-          {activeChannel && activeServer ? (
+          {activeChannel && activeServer && activeChannel.type === 'voice' ? (
+            <VoiceChannelPlaceholder channel={activeChannel} />
+          ) : activeChannel && activeServer ? (
             <ChatPrincipal
               channel={activeChannel}
               messages={messages}
@@ -451,6 +461,20 @@ function AppShell({ userId }: { userId: string }) {
         }}
       />
 
+      <InvitePreviewDialog
+        open={pendingInviteCode !== null}
+        code={pendingInviteCode}
+        onOpenChange={(open) => {
+          if (!open) setPendingInviteCode(null)
+        }}
+        onJoined={(servidor) => {
+          setServers((prev) => upsertServer(prev, servidor))
+          setActiveServerId(servidor.id)
+          setView('server')
+          setPendingInviteCode(null)
+        }}
+      />
+
       {forwardMessage && (
         <ForwardMessageDialog
           open={Boolean(forwardMessage)}
@@ -459,16 +483,6 @@ function AppShell({ userId }: { userId: string }) {
           sourceLabel={forwardMessage.sourceLabel}
           currentUserId={userId}
         />
-      )}
-
-      {profile && (activeServerId === null || view === 'dm') && (
-        <button
-          type="button"
-          onClick={signOut}
-          className="fixed right-4 bottom-4 text-xs text-muted-foreground underline-offset-4 hover:underline"
-        >
-          Cerrar sesión
-        </button>
       )}
     </div>
   )

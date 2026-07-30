@@ -149,6 +149,41 @@ export async function crearServidor(
   return mapServidorToServerItem(data)
 }
 
+export interface InvitePreview {
+  serverId: string
+  name: string
+  iconUrl?: string
+  memberCount: number
+  alreadyMember: boolean
+}
+
+interface PrevisualizarInvitacionRow {
+  servidor_id: string
+  nombre: string
+  icono_url: string | null
+  cantidad_miembros: number
+  ya_soy_miembro: boolean
+}
+
+export async function previsualizarInvitacion(
+  codigoInvitacion: string
+): Promise<InvitePreview | null> {
+  const { data, error } = await supabase
+    .rpc('previsualizar_invitacion', { p_codigo_invitacion: codigoInvitacion })
+    .maybeSingle<PrevisualizarInvitacionRow>()
+
+  if (error) throw error
+  if (!data) return null
+
+  return {
+    serverId: data.servidor_id,
+    name: data.nombre,
+    iconUrl: data.icono_url ?? undefined,
+    memberCount: data.cantidad_miembros,
+    alreadyMember: data.ya_soy_miembro,
+  }
+}
+
 export async function unirseAServidor(codigoInvitacion: string): Promise<ServerItem> {
   const { data, error } = await supabase
     .rpc('unirse_a_servidor', { p_codigo_invitacion: codigoInvitacion })
