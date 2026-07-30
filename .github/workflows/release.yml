@@ -7,15 +7,50 @@ on:
       - package.json
   workflow_dispatch:
 
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 permissions:
   contents: write
 
 jobs:
-  release:
+  tag:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+      created: ${{ steps.tag.outputs.created }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Crear y pushear el tag de versión
+        id: tag
+        shell: bash
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          TAG="v${VERSION}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+            echo "El tag $TAG ya existe en el remoto, no hace falta crearlo ni recompilar."
+            echo "created=false" >> "$GITHUB_OUTPUT"
+          else
+            git tag "$TAG"
+            git push origin "$TAG"
+            echo "created=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  build:
+    needs: tag
+    if: needs.tag.outputs.created == 'true'
     runs-on: windows-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.tag.outputs.tag }}
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -29,20 +64,6 @@ jobs:
       - name: Lint
         run: npm run lint
 
-      - name: Crear y pushear el tag de versión
-        shell: bash
-        run: |
-          VERSION=$(node -p "require('./package.json').version")
-          TAG="v${VERSION}"
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          if git rev-parse "$TAG" >/dev/null 2>&1; then
-            echo "El tag $TAG ya existe, no hace falta crearlo de nuevo."
-          else
-            git tag "$TAG"
-            git push origin "$TAG"
-          fi
-
       - name: Build y publicar en GitHub Releases
         run: npm run publish
         env:
@@ -55,8 +76,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          VERSION=$(node -p "require('./package.json').version")
-          TAG="v${VERSION}"
+          TAG="${{ needs.tag.outputs.tag }}"
           ASSETS=$(gh release view "$TAG" --json assets -q '[.assets[].name] | join(", ")')
           echo "Assets publicados en $TAG: $ASSETS"
           if ! echo "$ASSETS" | grep -q "latest.yml"; then
