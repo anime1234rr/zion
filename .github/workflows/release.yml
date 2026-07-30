@@ -49,3 +49,21 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+
+      - name: Verificar que la release publicada tenga los artefactos completos
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          TAG="v${VERSION}"
+          ASSETS=$(gh release view "$TAG" --json assets -q '[.assets[].name] | join(", ")')
+          echo "Assets publicados en $TAG: $ASSETS"
+          if ! echo "$ASSETS" | grep -q "latest.yml"; then
+            echo "::error::La release $TAG no tiene latest.yml adjunto — electron-updater no podrá detectar esta versión. Publicación incompleta, revisar manualmente en GitHub Releases."
+            exit 1
+          fi
+          if ! echo "$ASSETS" | grep -q "\.exe"; then
+            echo "::error::La release $TAG no tiene el instalador .exe adjunto. Publicación incompleta, revisar manualmente en GitHub Releases."
+            exit 1
+          fi
