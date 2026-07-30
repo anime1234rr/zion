@@ -1,5 +1,6 @@
 import { Download, Loader2, RefreshCw, Sparkles, TriangleAlert } from 'lucide-react'
 
+import { cn } from '@/lib/utils'
 import { useAppUpdate } from '@/hooks/use-app-update'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -60,9 +61,21 @@ export function UpdateBadge() {
 
         {info?.releaseNotes && (
           <ScrollArea className="max-h-64 rounded-md border border-border bg-muted/30 p-3">
-            <pre className="whitespace-pre-wrap font-sans text-xs text-muted-foreground">
-              {info.releaseNotes}
-            </pre>
+            <div
+              className={cn(
+                'text-xs text-muted-foreground',
+                '[&_h1]:mt-3 [&_h1]:mb-1 [&_h1]:text-sm [&_h1]:font-semibold [&_h1]:text-foreground [&_h1]:first:mt-0',
+                '[&_h2]:mt-3 [&_h2]:mb-1 [&_h2]:text-sm [&_h2]:font-semibold [&_h2]:text-foreground [&_h2]:first:mt-0',
+                '[&_h3]:mt-3 [&_h3]:mb-1 [&_h3]:text-sm [&_h3]:font-semibold [&_h3]:text-foreground [&_h3]:first:mt-0',
+                '[&_p]:mb-2 [&_p]:last:mb-0',
+                '[&_ul]:mb-2 [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:mb-2 [&_ol]:list-decimal [&_ol]:pl-4',
+                '[&_li]:mb-0.5',
+                '[&_strong]:font-semibold [&_strong]:text-foreground',
+                '[&_code]:rounded [&_code]:bg-muted [&_code]:px-1 [&_code]:py-0.5 [&_code]:font-mono [&_code]:text-foreground',
+                '[&_a]:text-primary [&_a]:underline'
+              )}
+              dangerouslySetInnerHTML={{ __html: info.releaseNotes }}
+            />
           </ScrollArea>
         )}
 
