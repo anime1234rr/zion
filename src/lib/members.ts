@@ -158,6 +158,14 @@ export async function actualizarRolDeMiembro(
   if (error) throw error
 }
 
+export async function expulsarMiembro(membershipId: string): Promise<void> {
+  const { error } = await supabase.rpc('expulsar_miembro', {
+    p_miembro_id: membershipId,
+  })
+
+  if (error) throw error
+}
+
 export const CATEGORIAS_PERMISOS = [
   { id: 'servidor', label: 'Gestión del servidor', icon: '🛡️' },
   { id: 'canales', label: 'Canales y estructura', icon: '🛠️' },
@@ -213,7 +221,7 @@ export const PERMISOS_CONOCIDOS = [
     key: 'expulsar_miembros',
     label: 'Expulsar miembros',
     categoria: 'miembros',
-    enforced: false,
+    enforced: true,
   },
   {
     key: 'banear_miembros',
@@ -246,10 +254,16 @@ export const PERMISOS_CONOCIDOS = [
     enforced: true,
   },
   {
+    key: 'fijar_mensajes',
+    label: 'Fijar y desfijar mensajes',
+    categoria: 'mensajes',
+    enforced: true,
+  },
+  {
     key: 'conectar_voz',
     label: 'Conectarse a canales de voz',
     categoria: 'voz',
-    enforced: false,
+    enforced: true,
   },
   {
     key: 'transmitir_voz',

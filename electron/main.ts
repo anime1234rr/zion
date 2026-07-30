@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Menu } from 'electron'
+import { app, BrowserWindow, desktopCapturer, ipcMain, Menu, session, shell } from 'electron'
 import electronUpdater, { type ProgressInfo, type UpdateInfo } from 'electron-updater'
 import log from 'electron-log'
 import path from 'node:path'
@@ -26,6 +26,14 @@ function serializarUpdateInfo(info: UpdateInfo) {
   }
 }
 
+// En Windows, el backend de captura de cámara "Media Foundation" que
+// Chromium usa por defecto crea una superficie nativa propia para el
+// pipeline de video que Windows termina mostrando como un ícono
+// aparte en la barra de tareas al prender la cámara. Forzar el
+// backend DirectShow (más viejo, pero sin esa superficie separada)
+// evita ese ícono fantasma sin afectar la calidad ni los permisos.
+app.commandLine.appendSwitch('disable-features', 'MediaFoundationVideoCapture')
+
 process.on('uncaughtException', (err) => {
   log.error('uncaughtException en el proceso principal', err)
   app.exit(1)
@@ -50,6 +58,8 @@ let win: BrowserWindow | null = null
 
 let allowClose = false
 let quitAndInstallPending = false
+let pendingScreenSourceId: string | null = null
+let pendingScreenAudio = false
 //MODIFICADO
 function createWindow() {
   win = new BrowserWindow({
@@ -134,6 +144,16 @@ if (!gotLock) {
     log.error('Error en el renderer', info)
   })
 
+  ipcMain.on('zion:open-external', (_event, url: string) => {
+    try {
+      if (new URL(url).protocol === 'https:') {
+        shell.openExternal(url)
+      }
+    } catch {
+      // URL inválida, no hacemos nada
+    }
+  })
+
   ipcMain.handle('zion:check-for-updates', async () => {
     if (!app.isPackaged) return null
     try {
@@ -143,6 +163,24 @@ if (!gotLock) {
       log.error('No se pudo verificar actualizaciones', err)
       return null
     }
+  })
+
+  ipcMain.handle('zion:list-screen-sources', async () => {
+    const sources = await desktopCapturer.getSources({
+      types: ['screen', 'window'],
+      thumbnailSize: { width: 320, height: 180 },
+      fetchWindowIcons: true,
+    })
+    return sources.map((source) => ({
+      id: source.id,
+      name: source.name,
+      thumbnailDataUrl: source.thumbnail.toDataURL(),
+    }))
+  })
+
+  ipcMain.on('zion:select-screen-source', (_event, sourceId: string, includeAudio: boolean) => {
+    pendingScreenSourceId = sourceId
+    pendingScreenAudio = includeAudio
   })
 
   ipcMain.on('zion:download-update', () => {
@@ -165,6 +203,54 @@ if (!gotLock) {
 
   app.whenReady().then(() => {
     log.info('App lista, version', app.getVersion())
+
+    // El chat de voz necesita getUserMedia(audio) — sin este handler,
+    // Electron deniega cualquier pedido de permiso de medios por
+    // defecto y el micrófono falla en silencio. Solo se aprueba
+    // 'media' (audio/video); todo lo demás queda denegado.
+    session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
+      callback(permission === 'media')
+    })
+
+    // getDisplayMedia() no funciona en Electron sin esto — a diferencia
+    // de un navegador normal, acá no hay picker nativo del SO por
+    // defecto. El renderer arma su propio selector con la lista que le
+    // pasamos por zion:list-screen-sources, y cuando el usuario elige
+    // una, zion:select-screen-source guarda el id acá para que este
+    // handler lo use en el próximo getDisplayMedia(). useSystemPicker
+    // en false para que nunca aparezca un picker nativo por encima del
+    // nuestro.
+    session.defaultSession.setDisplayMediaRequestHandler(
+      (_request, callback) => {
+        if (!pendingScreenSourceId) {
+          callback({})
+          return
+        }
+        const sourceId = pendingScreenSourceId
+        const withAudio = pendingScreenAudio
+        pendingScreenSourceId = null
+        pendingScreenAudio = false
+
+        desktopCapturer
+          .getSources({ types: ['screen', 'window'] })
+          .then((sources) => {
+            const source = sources.find((s) => s.id === sourceId)
+            if (!source) {
+              callback({})
+              return
+            }
+            callback({
+              video: source,
+              audio: withAudio ? 'loopback' : undefined,
+            })
+          })
+          .catch((err) => {
+            log.error('No se pudo resolver la fuente de pantalla compartida', err)
+            callback({})
+          })
+      },
+      { useSystemPicker: false }
+    )
 
     if (!app.isDefaultProtocolClient(PROTOCOLO)) {
       if (VITE_DEV_SERVER_URL) {

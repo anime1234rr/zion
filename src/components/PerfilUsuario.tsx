@@ -6,9 +6,12 @@ import {
   Mic,
   MicOff,
   Settings,
+  Sliders,
 } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
+import { openExternal } from '@/lib/electron-bridge'
+import { toggleDeafen, toggleMute, useVoiceConnection } from '@/hooks/use-voice-connection'
 import type { ChatUser, UserStatus } from '@/lib/types'
 import {
   Avatar,
@@ -28,6 +31,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { ConfigurarPerfilDialog } from '@/components/ConfigurarPerfilDialog'
+import { AudioSettingsDialog } from '@/components/AudioSettingsDialog'
 
 const statusColor: Record<UserStatus, string> = {
   online: 'bg-online',
@@ -43,32 +47,37 @@ const statusLabel: Record<UserStatus, string> = {
   offline: 'Desconectado',
 }
 
+const RELEASES_URL = 'https://github.com/anime1234rr/zion/releases'
+
 interface PerfilUsuarioProps {
   user: ChatUser
-  muted?: boolean
-  deafened?: boolean
-  onToggleMute?: () => void
-  onToggleDeafen?: () => void
   onSignOut?: () => void
   onProfileUpdated?: (user: ChatUser) => void
 }
 
 export function PerfilUsuario({
   user,
-  muted = false,
-  deafened = false,
-  onToggleMute,
-  onToggleDeafen,
   onSignOut,
   onProfileUpdated,
 }: PerfilUsuarioProps) {
   const [profileDialogOpen, setProfileDialogOpen] = useState(false)
+  const [audioSettingsOpen, setAudioSettingsOpen] = useState(false)
+  const { muted, deafened } = useVoiceConnection()
 
   return (
     <div className="flex h-[52px] shrink-0 items-center gap-2 border-t border-sidebar-border bg-sidebar px-2">
-      <button
-        type="button"
-        className="flex min-w-0 flex-1 items-center gap-2 rounded-md p-1 text-left outline-none hover:bg-sidebar-accent focus-visible:ring-3 focus-visible:ring-ring/50"
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={() => setProfileDialogOpen(true)}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault()
+            setProfileDialogOpen(true)
+          }
+        }}
+        aria-label="Abrir configuración de perfil"
+        className="flex min-w-0 flex-1 items-center gap-2 rounded-md p-1 outline-none hover:bg-sidebar-accent focus-visible:ring-3 focus-visible:ring-ring/50"
       >
         <Avatar>
           {user.avatarUrl && <AvatarImage src={user.avatarUrl} />}
@@ -79,18 +88,33 @@ export function PerfilUsuario({
           <span className="block truncate text-sm font-semibold text-sidebar-foreground">
             {user.name}
           </span>
-          <span className="block truncate text-xs text-muted-foreground">
-            {user.statusText ?? statusLabel[user.status]}
+          <span className="flex min-w-0 items-center gap-1 truncate text-xs text-muted-foreground">
+            <span className="truncate">{user.statusText ?? statusLabel[user.status]}</span>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    openExternal(RELEASES_URL)
+                  }}
+                  className="shrink-0 rounded-sm text-muted-foreground/60 outline-none hover:text-muted-foreground hover:underline focus-visible:ring-1 focus-visible:ring-ring/50"
+                >
+                  · v{__APP_VERSION__}
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="top">Ver novedades en GitHub</TooltipContent>
+            </Tooltip>
           </span>
         </span>
-      </button>
+      </div>
 
       <div className="flex shrink-0 items-center">
         <Tooltip>
           <TooltipTrigger asChild>
             <button
               type="button"
-              onClick={onToggleMute}
+              onClick={() => toggleMute()}
               aria-pressed={muted}
               aria-label={muted ? 'Activar micrófono' : 'Silenciar micrófono'}
               className={cn(
@@ -110,7 +134,7 @@ export function PerfilUsuario({
           <TooltipTrigger asChild>
             <button
               type="button"
-              onClick={onToggleDeafen}
+              onClick={() => toggleDeafen()}
               aria-pressed={deafened}
               aria-label={deafened ? 'Activar audio' : 'Ensordecer'}
               className={cn(
@@ -150,6 +174,10 @@ export function PerfilUsuario({
               <Settings className="size-4" />
               Configurar perfil
             </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => setAudioSettingsOpen(true)}>
+              <Sliders className="size-4" />
+              Voz y video
+            </DropdownMenuItem>
             <DropdownMenuItem variant="destructive" onSelect={onSignOut}>
               <LogOut className="size-4" />
               Cerrar sesión
@@ -164,6 +192,8 @@ export function PerfilUsuario({
         userId={user.id}
         onProfileUpdated={(updated) => onProfileUpdated?.(updated)}
       />
+
+      <AudioSettingsDialog open={audioSettingsOpen} onOpenChange={setAudioSettingsOpen} />
     </div>
   )
 }

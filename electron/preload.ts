@@ -13,6 +13,12 @@ interface UpdateProgressPayload {
   total: number
 }
 
+interface ScreenSourcePayload {
+  id: string
+  name: string
+  thumbnailDataUrl: string
+}
+
 contextBridge.exposeInMainWorld('electronAPI', {
   getInitialDeepLink: (): Promise<string | null> =>
     ipcRenderer.invoke('zion:get-initial-deep-link'),
@@ -31,6 +37,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   reportError: (info: { message: string; stack?: string; context?: string }): void => {
     ipcRenderer.send('zion-renderer-error', info)
+  },
+  openExternal: (url: string): void => {
+    ipcRenderer.send('zion:open-external', url)
+  },
+  listScreenSources: (): Promise<ScreenSourcePayload[]> =>
+    ipcRenderer.invoke('zion:list-screen-sources'),
+  selectScreenSource: (sourceId: string, includeAudio: boolean): void => {
+    ipcRenderer.send('zion:select-screen-source', sourceId, includeAudio)
   },
   checkForUpdates: (): Promise<UpdateInfoPayload | null> =>
     ipcRenderer.invoke('zion:check-for-updates'),

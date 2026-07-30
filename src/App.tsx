@@ -13,6 +13,9 @@ import {
   suscribirseAServidores,
 } from '@/lib/servers'
 import { listarCanales, suscribirseACanalesDeServidor } from '@/lib/channels'
+import { suscribirseANotificaciones } from '@/lib/notifications'
+import { pushToast } from '@/hooks/use-toasts'
+import { leaveVoiceChannel, useVoiceConnection } from '@/hooks/use-voice-connection'
 import {
   editarMensaje,
   eliminarMensaje,
@@ -37,13 +40,16 @@ import { UpdateBadge } from '@/components/UpdateBadge'
 import { SidebarServidores } from '@/components/SidebarServidores'
 import { PanelCanales } from '@/components/PanelCanales'
 import { ChatPrincipal } from '@/components/ChatPrincipal'
-import { VoiceChannelPlaceholder } from '@/components/VoiceChannelPlaceholder'
+import { VoiceChannelView } from '@/components/VoiceChannelView'
+import { VoiceFloatingPanel } from '@/components/VoiceFloatingPanel'
+import { WelcomeDashboard } from '@/components/WelcomeDashboard'
 import { PanelMiembros } from '@/components/PanelMiembros'
 import { CrearServidorDialog } from '@/components/CrearServidorDialog'
 import { UnirseServidorDialog } from '@/components/UnirseServidorDialog'
 import { InvitePreviewDialog } from '@/components/InvitePreviewDialog'
 import { VistaInicio } from '@/components/inicio/VistaInicio'
 import { ForwardMessageDialog } from '@/components/ForwardMessageDialog'
+import { ToastViewport } from '@/components/ToastViewport'
 import { TooltipProvider } from '@/components/ui/tooltip'
 
 type ViewMode = 'server' | 'dm'
@@ -81,16 +87,38 @@ function AppShell({ userId }: { userId: string }) {
     sourceLabel: string
   } | null>(null)
   const [highlightMessageId, setHighlightMessageId] = useState<string | null>(null)
+  const { connectedChannelId } = useVoiceConnection()
 
   function handleSelectServer(serverId: string) {
     setView('server')
     setActiveServerId(serverId)
   }
 
+  function handleReturnToVoiceChannel(serverId: string, channelId: string) {
+    setView('server')
+    setActiveServerId(serverId)
+    setActiveChannelId(channelId)
+  }
+
   function handleMessageUser(targetUserId: string) {
     setView('dm')
     setPendingDmUserId(targetUserId)
   }
+
+  useEffect(() => {
+    return suscribirseANotificaciones(userId, (notificacion) => {
+      pushToast({
+        title: notificacion.titulo,
+        description: notificacion.mensaje,
+        icon: notificacion.tipo,
+        onClick: notificacion.servidorId
+          ? () => handleSelectServer(notificacion.servidorId as string)
+          : notificacion.tipo === 'mensaje_privado' || notificacion.tipo === 'solicitud_amistad'
+            ? () => setView('dm')
+            : undefined,
+      })
+    })
+  }, [userId])
 
   useEffect(() => {
     let cancelado = false
@@ -123,8 +151,12 @@ function AppShell({ userId }: { userId: string }) {
 
   useEffect(() => {
     return onBeforeQuit(() => {
-      marcarDesconectadoPorCierreAwait()
-        .catch((err) => console.error('No se pudo marcar como desconectado', err))
+      Promise.allSettled([marcarDesconectadoPorCierreAwait(), leaveVoiceChannel()])
+        .then(([estadoResult]) => {
+          if (estadoResult.status === 'rejected') {
+            console.error('No se pudo marcar como desconectado', estadoResult.reason)
+          }
+        })
         .finally(() => readyToQuit())
     })
   }, [])
@@ -379,7 +411,7 @@ function AppShell({ userId }: { userId: string }) {
           ) : null}
 
           {activeChannel && activeServer && activeChannel.type === 'voice' ? (
-            <VoiceChannelPlaceholder channel={activeChannel} />
+            <VoiceChannelView channel={activeChannel} serverId={activeServer.id} currentUserId={userId} />
           ) : activeChannel && activeServer ? (
             <ChatPrincipal
               channel={activeChannel}
@@ -404,32 +436,16 @@ function AppShell({ userId }: { userId: string }) {
               highlightMessageId={highlightMessageId}
               onNavigateToServer={handleSelectServer}
             />
+          ) : servers.length === 0 ? (
+            <WelcomeDashboard
+              onCreateServer={() => setCreateDialogOpen(true)}
+              onJoinServer={() => setJoinDialogOpen(true)}
+            />
           ) : (
             <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
               <p className="text-sm text-muted-foreground">
-                {servers.length === 0
-                  ? 'Todavía no tenés servidores.'
-                  : 'Elegí un canal para empezar a chatear.'}
+                Elegí un canal para empezar a chatear.
               </p>
-              {servers.length === 0 && (
-                <div className="flex items-center gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setCreateDialogOpen(true)}
-                    className="text-sm font-medium text-primary underline-offset-4 hover:underline"
-                  >
-                    Crear tu primer servidor
-                  </button>
-                  <span className="text-sm text-muted-foreground">o</span>
-                  <button
-                    type="button"
-                    onClick={() => setJoinDialogOpen(true)}
-                    className="text-sm font-medium text-primary underline-offset-4 hover:underline"
-                  >
-                    unirme con un código
-                  </button>
-                </div>
-              )}
             </div>
           )}
 
@@ -484,6 +500,12 @@ function AppShell({ userId }: { userId: string }) {
           currentUserId={userId}
         />
       )}
+
+      <VoiceFloatingPanel
+        currentUserId={userId}
+        hidden={view === 'server' && activeChannel?.id === connectedChannelId}
+        onReturnToChannel={handleReturnToVoiceChannel}
+      />
     </div>
   )
 }
@@ -505,6 +527,7 @@ function App() {
         </TooltipProvider>
       )}
       <UpdateBadge />
+      <ToastViewport />
     </>
   )
 }

@@ -81,3 +81,23 @@ export async function subirArchivoChat(
   const url = supabase.storage.from('archivos-chat').getPublicUrl(path).data.publicUrl
   return { url, tipo }
 }
+
+const VOZ_MAX_SIZE_BYTES = 15 * 1024 * 1024
+
+export async function subirNotaDeVoz(canalId: string, blob: Blob): Promise<{ url: string; tipo: 'audio' }> {
+  if (blob.size > VOZ_MAX_SIZE_BYTES) {
+    throw new Error('El mensaje de voz no puede pesar más de 15 MB.')
+  }
+
+  const path = `chat/${canalId}/${crypto.randomUUID()}.webm`
+
+  const { error } = await supabase.storage.from('archivos-chat').upload(path, blob, {
+    cacheControl: '3600',
+    upsert: false,
+    contentType: blob.type || 'audio/webm',
+  })
+  if (error) throw error
+
+  const url = supabase.storage.from('archivos-chat').getPublicUrl(path).data.publicUrl
+  return { url, tipo: 'audio' }
+}

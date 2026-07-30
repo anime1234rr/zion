@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ChevronDown, Crown, Plus } from 'lucide-react'
+import { ChevronDown, Crown, Plus, UserX } from 'lucide-react'
 
 import {
   actualizarRolDeMiembro,
+  expulsarMiembro,
   listarMiembros,
   listarRolesDeServidor,
   suscribirseAMiembrosDeServidor,
@@ -26,6 +27,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { RoleEditorPanel } from '@/components/server-settings/RoleEditorPanel'
+import { ConfirmarAccionDialog } from '@/components/server-settings/ConfirmarAccionDialog'
 import { UserProfileCard } from '@/components/UserProfileCard'
 
 const statusColor: Record<UserStatus, string> = {
@@ -46,13 +48,15 @@ type RoleSelection = string | 'new' | 'owner' | null
 const OWNER_SYNTHETIC_ROLE_ID = 'owner'
 
 export function PersonasSection({ server, currentUserId }: PersonasSectionProps) {
-  const { hasPermission } = useServerPermissions(server, currentUserId)
+  const { isOwner, hasPermission } = useServerPermissions(server, currentUserId)
   const canManageRoles = hasPermission('gestionar_roles')
+  const canExpelMembers = isOwner || hasPermission('expulsar_miembros')
   const [tab, setTab] = useState<Tab>('miembros')
   const [members, setMembers] = useState<ServerMember[]>([])
   const [roles, setRoles] = useState<ServerRole[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [expelTarget, setExpelTarget] = useState<ServerMember | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const [selectedRoleId, setSelectedRoleId] = useState<RoleSelection>(null)
 
@@ -197,7 +201,7 @@ export function PersonasSection({ server, currentUserId }: PersonasSectionProps)
       {!loading && !error && tab === 'miembros' && (
         <div className="mt-4 flex flex-col gap-1">
           {sortedMembers.map((member) => {
-            const isOwner = member.user.id === server.ownerId
+            const isMemberOwner = member.user.id === server.ownerId
             const offline = member.user.status === 'offline'
             return (
               <div
@@ -228,7 +232,7 @@ export function PersonasSection({ server, currentUserId }: PersonasSectionProps)
                     <span className="min-w-0 flex-1">
                       <span className="flex items-center gap-1.5 truncate text-sm font-medium text-foreground">
                         {member.user.name}
-                        {isOwner && (
+                        {isMemberOwner && (
                           <Crown className="size-3.5 shrink-0 text-muted-foreground" />
                         )}
                       </span>
@@ -236,7 +240,7 @@ export function PersonasSection({ server, currentUserId }: PersonasSectionProps)
                   </button>
                 </UserProfileCard>
 
-                {isOwner ? (
+                {isMemberOwner ? (
                   <span className="rounded-md border border-border px-2.5 py-1 text-xs font-medium text-muted-foreground">
                     Propietario
                   </span>
@@ -288,10 +292,37 @@ export function PersonasSection({ server, currentUserId }: PersonasSectionProps)
                     </DropdownMenuContent>
                   </DropdownMenu>
                 )}
+
+                {canExpelMembers && !isMemberOwner && member.user.id !== currentUserId && (
+                  <button
+                    type="button"
+                    onClick={() => setExpelTarget(member)}
+                    aria-label={`Expulsar a ${member.user.name}`}
+                    className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-destructive/10 hover:text-destructive focus-visible:ring-3 focus-visible:ring-ring/50"
+                  >
+                    <UserX className="size-4" />
+                  </button>
+                )}
               </div>
             )
           })}
         </div>
+      )}
+
+      {expelTarget && (
+        <ConfirmarAccionDialog
+          open={Boolean(expelTarget)}
+          onOpenChange={(next) => {
+            if (!next) setExpelTarget(null)
+          }}
+          title={`Expulsar a ${expelTarget.user.name}`}
+          description={`${expelTarget.user.name} va a dejar de ser miembro de ${server.name}. Puede volver a unirse con un enlace de invitación.`}
+          confirmLabel="Expulsar"
+          onConfirm={async () => {
+            await expulsarMiembro(expelTarget.membershipId)
+            setExpelTarget(null)
+          }}
+        />
       )}
 
       {!loading && !error && tab === 'roles' && canManageRoles && (

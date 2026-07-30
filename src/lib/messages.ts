@@ -1,11 +1,11 @@
 import { supabase } from '@/lib/supabase'
 import { formatFencedCode, parseFencedCode } from '@/lib/code-fence'
-import { attachmentTypeToAdjuntoTipo, formatTimestamp, mapAdjunto } from '@/lib/message-format'
+import { attachmentTypeToAdjuntoTipo, formatTimestamp, mapAdjunto, mapReacciones } from '@/lib/message-format'
 import { mapPerfilToChatUser, type PerfilRow } from '@/lib/profiles'
 import type { ChatAttachment, ChatMessage, CodeBlock, ForwardedFrom, ReplyPreview } from '@/lib/types'
 
 const MENSAJE_SELECT =
-  '*, perfiles!mensajes_usuario_id_fkey(*), mensaje_respondido:respuesta_a_id(id, contenido, tipo_mensaje, perfiles!mensajes_usuario_id_fkey(*))'
+  '*, perfiles!mensajes_usuario_id_fkey(*), mensaje_respondido:respuesta_a_id(id, contenido, tipo_mensaje, perfiles!mensajes_usuario_id_fkey(*)), reacciones_mensajes(usuario_id, emoji)'
 
 interface MensajeRespondidoRow {
   id: string
@@ -26,8 +26,10 @@ interface MensajeRow {
   editado_en: string | null
   reenviado_de_autor_nombre: string | null
   reenviado_de_origen: string | null
+  fijado: boolean
   perfiles: PerfilRow | null
   mensaje_respondido: MensajeRespondidoRow | null
+  reacciones_mensajes: { usuario_id: string; emoji: string }[] | null
 }
 
 function previewDeContenido(tipoMensaje: string, contenido: string): string {
@@ -69,6 +71,8 @@ function mapMensajeRow(row: MensajeRow): ChatMessage {
     editedAt: row.editado_en ?? undefined,
     replyTo: mapReplyPreview(row.mensaje_respondido),
     forwardedFrom: mapForwardedFrom(row),
+    pinned: row.fijado,
+    reactions: mapReacciones(row.reacciones_mensajes),
   }
 
   if (row.tipo_mensaje === 'fragmento_codigo') {
@@ -147,6 +151,37 @@ export async function eliminarMensaje(mensajeId: string): Promise<void> {
   if (error) throw error
 }
 
+export async function fijarMensaje(mensajeId: string): Promise<void> {
+  const { error } = await supabase.rpc('fijar_mensaje', { p_mensaje_id: mensajeId })
+  if (error) throw error
+}
+
+export async function desfijarMensaje(mensajeId: string): Promise<void> {
+  const { error } = await supabase.rpc('desfijar_mensaje', { p_mensaje_id: mensajeId })
+  if (error) throw error
+}
+
+export async function alternarReaccionMensaje(mensajeId: string, emoji: string): Promise<void> {
+  const { error } = await supabase.rpc('alternar_reaccion_mensaje', {
+    p_mensaje_id: mensajeId,
+    p_emoji: emoji,
+  })
+  if (error) throw error
+}
+
+export async function listarMensajesFijados(canalId: string): Promise<ChatMessage[]> {
+  const { data, error } = await supabase
+    .from('mensajes')
+    .select(MENSAJE_SELECT)
+    .eq('canal_id', canalId)
+    .eq('fijado', true)
+    .order('creado_at', { ascending: false })
+    .returns<MensajeRow[]>()
+
+  if (error) throw error
+  return (data ?? []).map(mapMensajeRow)
+}
+
 async function fetchMensajeCompleto(mensajeId: string): Promise<ChatMessage | null> {
   const { data, error } = await supabase
     .from('mensajes')
@@ -209,6 +244,21 @@ export function suscribirseACanal(canalId: string, handlers: SuscribirseACanalHa
       (payload) => {
         const row = payload.old as { id: string }
         onMensajeEliminado?.(row.id)
+      }
+    )
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'reacciones_mensajes',
+        filter: `canal_id=eq.${canalId}`,
+      },
+      async (payload) => {
+        if (!onMensajeEditado) return
+        const row = (payload.new ?? payload.old) as { mensaje_id: string }
+        const mensaje = await fetchMensajeCompleto(row.mensaje_id)
+        if (mensaje) onMensajeEditado(mensaje)
       }
     )
     .subscribe()

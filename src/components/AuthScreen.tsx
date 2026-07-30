@@ -32,11 +32,12 @@ export function AuthScreen() {
         })
         if (error) throw error
       } else {
+        const nombreUsuarioTrim = nombreUsuario.trim()
         const { data, error } = await supabase.auth.signUp({
           email,
           password,
           options: {
-            data: nombreUsuario ? { nombre_usuario: nombreUsuario } : undefined,
+            data: nombreUsuarioTrim ? { nombre_usuario: nombreUsuarioTrim } : undefined,
           },
         })
         if (error) throw error

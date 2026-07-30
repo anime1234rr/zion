@@ -11,12 +11,21 @@ export interface UpdateProgressPayload {
   total: number
 }
 
+export interface ScreenSourcePayload {
+  id: string
+  name: string
+  thumbnailDataUrl: string
+}
+
 interface ElectronAPI {
   getInitialDeepLink: () => Promise<string | null>
   onDeepLink: (callback: (url: string) => void) => () => void
   onBeforeQuit: (callback: () => void) => () => void
   readyToQuit: () => void
   reportError: (info: { message: string; stack?: string; context?: string }) => void
+  openExternal: (url: string) => void
+  listScreenSources: () => Promise<ScreenSourcePayload[]>
+  selectScreenSource: (sourceId: string, includeAudio: boolean) => void
   checkForUpdates: () => Promise<UpdateInfoPayload | null>
   downloadUpdate: () => void
   installUpdate: () => void
@@ -51,6 +60,22 @@ export function readyToQuit(): void {
 export function reportError(message: string, stack?: string, context?: string): void {
   console.error(context ? `[${context}]` : '[error]', message, stack)
   window.electronAPI?.reportError({ message, stack, context })
+}
+
+export function openExternal(url: string): void {
+  if (window.electronAPI) {
+    window.electronAPI.openExternal(url)
+  } else {
+    window.open(url, '_blank', 'noopener,noreferrer')
+  }
+}
+
+export function listScreenSources(): Promise<ScreenSourcePayload[]> {
+  return window.electronAPI?.listScreenSources() ?? Promise.resolve([])
+}
+
+export function selectScreenSource(sourceId: string, includeAudio: boolean): void {
+  window.electronAPI?.selectScreenSource(sourceId, includeAudio)
 }
 
 export function checkForUpdates(): Promise<UpdateInfoPayload | null> {

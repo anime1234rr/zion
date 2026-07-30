@@ -36,12 +36,7 @@ export function suscribirseACanalesDeServidor(
   }
 }
 
-const CATEGORY_ORDER: { tipo: string; label: string }[] = [
-  { tipo: 'anuncios', label: 'Anuncios' },
-  { tipo: 'texto', label: 'Texto' },
-  { tipo: 'voz', label: 'Voz' },
-  { tipo: 'codigo', label: 'Código' },
-]
+export const UNCATEGORIZED_ID = '__sin_categoria__'
 
 function mapCanalToChannelItem(row: CanalRow): ChannelItem {
   return {
@@ -51,14 +46,36 @@ function mapCanalToChannelItem(row: CanalRow): ChannelItem {
   }
 }
 
-function agruparPorTipo(canales: CanalRow[]): ChannelCategory[] {
-  return CATEGORY_ORDER.map(({ tipo, label }) => ({
-    id: `categoria-${tipo}`,
-    name: label,
-    channels: canales
-      .filter((canal) => canal.tipo === tipo)
-      .map(mapCanalToChannelItem),
-  })).filter((category) => category.channels.length > 0)
+function agruparPorCategoria(rows: CanalRow[]): ChannelCategory[] {
+  const categorias = rows
+    .filter((row) => row.tipo === 'categoria')
+    .sort((a, b) => a.posicion - b.posicion)
+
+  const canales = rows
+    .filter((row) => row.tipo !== 'categoria')
+    .sort((a, b) => a.posicion - b.posicion)
+
+  const sinCategoria = canales.filter((row) => row.categoria_id === null)
+
+  const resultado: ChannelCategory[] = [
+    {
+      id: UNCATEGORIZED_ID,
+      name: '',
+      channels: sinCategoria.map(mapCanalToChannelItem),
+    },
+  ]
+
+  for (const categoria of categorias) {
+    resultado.push({
+      id: categoria.id,
+      name: categoria.nombre,
+      channels: canales
+        .filter((row) => row.categoria_id === categoria.id)
+        .map(mapCanalToChannelItem),
+    })
+  }
+
+  return resultado
 }
 
 export async function listarCanales(
@@ -73,7 +90,47 @@ export async function listarCanales(
     .returns<CanalRow[]>()
 
   if (error) throw error
-  return agruparPorTipo(data ?? [])
+  return agruparPorCategoria(data ?? [])
+}
+
+export async function crearCategoria(
+  servidorId: string,
+  nombre: string
+): Promise<ChannelCategory> {
+  const { data, error } = await supabase
+    .rpc('crear_canal', {
+      p_servidor_id: servidorId,
+      p_nombre: nombre,
+      p_tipo: 'categoria',
+    })
+    .single<CanalRow>()
+
+  if (error) throw error
+  if (!data) throw new Error('No se pudo crear la categoría.')
+
+  return { id: data.id, name: data.nombre, channels: [] }
+}
+
+export interface ReordenCanal {
+  canalId: string
+  categoriaId: string | null
+  posicion: number
+}
+
+export async function reordenarCanales(
+  servidorId: string,
+  cambios: ReordenCanal[]
+): Promise<void> {
+  const { error } = await supabase.rpc('reordenar_canales', {
+    p_servidor_id: servidorId,
+    p_cambios: cambios.map((c) => ({
+      canal_id: c.canalId,
+      categoria_id: c.categoriaId,
+      posicion: c.posicion,
+    })),
+  })
+
+  if (error) throw error
 }
 
 const channelTypeToTipoCanal: Record<ChannelType, string> = {

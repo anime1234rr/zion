@@ -1,13 +1,19 @@
 import { useEffect, useState } from 'react'
-import { Crown } from 'lucide-react'
+import { Crown, Mic, MicOff } from 'lucide-react'
 
 import {
   listarMiembros,
   suscribirseAMiembrosDeServidor,
   type ServerMember,
 } from '@/lib/members'
+import {
+  listarParticipantesDeVozDelServidor,
+  suscribirseAEstadosVozGlobal,
+  type VoiceParticipant,
+} from '@/lib/voice'
 import { cn, getErrorMessage } from '@/lib/utils'
 import { useResizablePanel } from '@/hooks/use-resizable-panel'
+import { useVoiceConnection } from '@/hooks/use-voice-connection'
 import type { ServerItem, UserStatus } from '@/lib/types'
 import {
   Avatar,
@@ -36,6 +42,8 @@ export function PanelMiembros({ server, currentUserId, onMessageUser }: PanelMie
   const [members, setMembers] = useState<ServerMember[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [voiceByUserId, setVoiceByUserId] = useState<Record<string, VoiceParticipant>>({})
+  const { connectedChannelId, speakingUserIds } = useVoiceConnection()
   const { width, resizing, handlePointerDown } = useResizablePanel({
     storageKey: 'zion:panel-miembros-width',
     defaultWidth: 240,
@@ -56,6 +64,29 @@ export function PanelMiembros({ server, currentUserId, onMessageUser }: PanelMie
         .then((data) => !cancelado && setMembers(data))
         .catch((err) => !cancelado && setError(getErrorMessage(err)))
     })
+
+    return () => {
+      cancelado = true
+      unsubscribe()
+    }
+  }, [server.id])
+
+  useEffect(() => {
+    let cancelado = false
+
+    function refreshVoiceRoster() {
+      listarParticipantesDeVozDelServidor(server.id)
+        .then((participants) => {
+          if (cancelado) return
+          const byUserId: Record<string, VoiceParticipant> = {}
+          for (const participant of participants) byUserId[participant.user.id] = participant
+          setVoiceByUserId(byUserId)
+        })
+        .catch((err) => console.error('No se pudo cargar quién está en voz en este servidor', err))
+    }
+
+    refreshVoiceRoster()
+    const unsubscribe = suscribirseAEstadosVozGlobal(refreshVoiceRoster)
 
     return () => {
       cancelado = true
@@ -91,6 +122,9 @@ export function PanelMiembros({ server, currentUserId, onMessageUser }: PanelMie
                 server={server}
                 currentUserId={currentUserId}
                 onMessageUser={onMessageUser}
+                voiceByUserId={voiceByUserId}
+                connectedChannelId={connectedChannelId}
+                speakingUserIds={speakingUserIds}
               />
               <MemberGroup
                 title={`Desconectados — ${desconectados.length}`}
@@ -98,6 +132,9 @@ export function PanelMiembros({ server, currentUserId, onMessageUser }: PanelMie
                 server={server}
                 currentUserId={currentUserId}
                 onMessageUser={onMessageUser}
+                voiceByUserId={voiceByUserId}
+                connectedChannelId={connectedChannelId}
+                speakingUserIds={speakingUserIds}
                 dimmed
               />
             </>
@@ -114,6 +151,9 @@ function MemberGroup({
   server,
   currentUserId,
   onMessageUser,
+  voiceByUserId,
+  connectedChannelId,
+  speakingUserIds,
   dimmed = false,
 }: {
   title: string
@@ -121,6 +161,9 @@ function MemberGroup({
   server: ServerItem
   currentUserId: string
   onMessageUser?: (userId: string) => void
+  voiceByUserId: Record<string, VoiceParticipant>
+  connectedChannelId: string | null
+  speakingUserIds: Set<string>
   dimmed?: boolean
 }) {
   if (members.length === 0) return null
@@ -131,40 +174,53 @@ function MemberGroup({
         {title}
       </p>
       <ul className="flex flex-col gap-0.5">
-        {members.map((member) => (
-          <li key={member.membershipId}>
-            <UserProfileCard
-              userId={member.user.id}
-              server={server}
-              currentUserId={currentUserId}
-              onMessageUser={onMessageUser}
-            >
-              <button
-                type="button"
-                className={cn(
-                  'flex w-full items-center gap-2.5 rounded-md px-1.5 py-1.5 text-left outline-none hover:bg-sidebar-accent focus-visible:ring-3 focus-visible:ring-ring/50',
-                  dimmed && 'opacity-60'
-                )}
+        {members.map((member) => {
+          const voice = voiceByUserId[member.user.id]
+          const speaking = Boolean(
+            voice && connectedChannelId === voice.canalId && !voice.muted && speakingUserIds.has(member.user.id)
+          )
+
+          return (
+            <li key={member.membershipId}>
+              <UserProfileCard
+                userId={member.user.id}
+                server={server}
+                currentUserId={currentUserId}
+                onMessageUser={onMessageUser}
               >
-                <Avatar size="sm">
-                  {member.user.avatarUrl && (
-                    <AvatarImage src={member.user.avatarUrl} />
+                <button
+                  type="button"
+                  className={cn(
+                    'flex w-full items-center gap-2.5 rounded-md px-1.5 py-1.5 text-left outline-none hover:bg-sidebar-accent focus-visible:ring-3 focus-visible:ring-ring/50',
+                    dimmed && 'opacity-60'
                   )}
-                  <AvatarFallback>
-                    {member.user.name.slice(0, 2).toUpperCase()}
-                  </AvatarFallback>
-                  <AvatarBadge className={statusColor[member.user.status]} />
-                </Avatar>
-                <span className="flex min-w-0 items-center gap-1 truncate text-sm text-sidebar-foreground">
-                  <span className="truncate">{member.user.name}</span>
-                  {member.user.id === server.ownerId && (
-                    <Crown className="size-3 shrink-0 text-muted-foreground" />
-                  )}
-                </span>
-              </button>
-            </UserProfileCard>
-          </li>
-        ))}
+                >
+                  <Avatar size="sm" className={cn(speaking && 'ring-2 ring-online')}>
+                    {member.user.avatarUrl && (
+                      <AvatarImage src={member.user.avatarUrl} />
+                    )}
+                    <AvatarFallback>
+                      {member.user.name.slice(0, 2).toUpperCase()}
+                    </AvatarFallback>
+                    <AvatarBadge className={statusColor[member.user.status]} />
+                  </Avatar>
+                  <span className="flex min-w-0 items-center gap-1 truncate text-sm text-sidebar-foreground">
+                    <span className="truncate">{member.user.name}</span>
+                    {member.user.id === server.ownerId && (
+                      <Crown className="size-3 shrink-0 text-muted-foreground" />
+                    )}
+                    {voice &&
+                      (voice.muted ? (
+                        <MicOff className="size-3 shrink-0 text-muted-foreground" />
+                      ) : (
+                        <Mic className="size-3 shrink-0 text-online" />
+                      ))}
+                  </span>
+                </button>
+              </UserProfileCard>
+            </li>
+          )
+        })}
       </ul>
     </div>
   )

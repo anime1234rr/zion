@@ -42,7 +42,12 @@ export interface CodeBlock {
 
 export interface ChatAttachment {
   url: string
-  type: 'image' | 'video'
+  type: 'image' | 'video' | 'audio'
+}
+
+export interface MessageReaction {
+  emoji: string
+  userIds: string[]
 }
 
 export interface ReplyPreview {
@@ -66,6 +71,8 @@ export interface ChatMessage {
   editedAt?: string
   replyTo?: ReplyPreview
   forwardedFrom?: ForwardedFrom
+  pinned?: boolean
+  reactions?: MessageReaction[]
 }
 
 export type FriendStatus =

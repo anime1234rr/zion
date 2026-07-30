@@ -1,4 +1,4 @@
-import { Copy, Forward, Link, Pencil, Reply, Trash2 } from 'lucide-react'
+import { Copy, Files, Forward, Link, Pin, PinOff, Pencil, Reply, Trash2 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
 export interface MessageAction {
@@ -18,6 +18,11 @@ export interface UseMessageActionsOptions {
   onForward: () => void
   onCopyId: () => void
   onCopyLink: () => void
+  onCopyContent: () => void
+  isPinned?: boolean
+  canPin?: boolean
+  onPin?: () => void
+  onUnpin?: () => void
 }
 
 export function useMessageActions({
@@ -29,6 +34,11 @@ export function useMessageActions({
   onForward,
   onCopyId,
   onCopyLink,
+  onCopyContent,
+  isPinned = false,
+  canPin = false,
+  onPin,
+  onUnpin,
 }: UseMessageActionsOptions): MessageAction[] {
   const actions: MessageAction[] = []
 
@@ -38,8 +48,17 @@ export function useMessageActions({
 
   actions.push({ key: 'reply', label: 'Responder', icon: Reply, onSelect: onReply })
   actions.push({ key: 'forward', label: 'Reenviar', icon: Forward, onSelect: onForward })
+  actions.push({ key: 'copy-content', label: 'Copiar mensaje', icon: Files, onSelect: onCopyContent })
   actions.push({ key: 'copy-link', label: 'Copiar enlace', icon: Link, onSelect: onCopyLink })
   actions.push({ key: 'copy-id', label: 'Copiar ID del mensaje', icon: Copy, onSelect: onCopyId })
+
+  if (canPin && (onPin || onUnpin)) {
+    actions.push(
+      isPinned
+        ? { key: 'unpin', label: 'Desfijar mensaje', icon: PinOff, onSelect: () => onUnpin?.() }
+        : { key: 'pin', label: 'Fijar mensaje', icon: Pin, onSelect: () => onPin?.() }
+    )
+  }
 
   if (isOwnMessage || canDeleteOthers) {
     actions.push({

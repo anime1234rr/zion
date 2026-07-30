@@ -1,6 +1,6 @@
 import { supabase } from '@/lib/supabase'
 import { formatFencedCode, parseFencedCode } from '@/lib/code-fence'
-import { attachmentTypeToAdjuntoTipo, formatTimestamp, mapAdjunto } from '@/lib/message-format'
+import { attachmentTypeToAdjuntoTipo, formatTimestamp, mapAdjunto, mapReacciones } from '@/lib/message-format'
 import { mapPerfilToChatUser, type PerfilRow } from '@/lib/profiles'
 import type {
   ChatAttachment,
@@ -13,7 +13,7 @@ import type {
 } from '@/lib/types'
 
 const MENSAJE_DIRECTO_SELECT =
-  '*, perfiles!mensajes_directos_usuario_id_fkey(*), mensaje_respondido:respuesta_a_id(id, contenido, tipo_mensaje, perfiles!mensajes_directos_usuario_id_fkey(*))'
+  '*, perfiles!mensajes_directos_usuario_id_fkey(*), mensaje_respondido:respuesta_a_id(id, contenido, tipo_mensaje, perfiles!mensajes_directos_usuario_id_fkey(*)), reacciones_mensajes_directos(usuario_id, emoji)'
 
 interface ConversacionRow {
   id: string
@@ -49,6 +49,7 @@ interface MensajeDirectoRow {
   reenviado_de_origen: string | null
   perfiles: PerfilRow | null
   mensaje_respondido: MensajeRespondidoRow | null
+  reacciones_mensajes_directos: { usuario_id: string; emoji: string }[] | null
 }
 
 function mapConversacion(row: ConversacionRow, currentUserId: string): DMConversation {
@@ -109,6 +110,7 @@ function mapMensajeDirectoRow(row: MensajeDirectoRow): ChatMessage {
     editedAt: row.editado_en ?? undefined,
     replyTo: mapReplyPreview(row.mensaje_respondido),
     forwardedFrom: mapForwardedFrom(row),
+    reactions: mapReacciones(row.reacciones_mensajes_directos),
   }
 
   if (row.tipo_mensaje === 'fragmento_codigo') {
@@ -214,6 +216,14 @@ export async function editarMensajeDirecto(mensajeId: string, contenido: string)
   const mensaje = await fetchMensajeDirectoCompleto(mensajeId)
   if (!mensaje) throw new Error('No se pudo cargar el mensaje editado.')
   return mensaje
+}
+
+export async function alternarReaccionMensajeDirecto(mensajeId: string, emoji: string): Promise<void> {
+  const { error } = await supabase.rpc('alternar_reaccion_mensaje_directo', {
+    p_mensaje_id: mensajeId,
+    p_emoji: emoji,
+  })
+  if (error) throw error
 }
 
 export async function eliminarMensajeDirecto(mensajeId: string): Promise<void> {
@@ -323,6 +333,21 @@ export function suscribirseAConversacion(
       (payload) => {
         const row = payload.old as { id: string }
         onMensajeEliminado?.(row.id)
+      }
+    )
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'reacciones_mensajes_directos',
+        filter: `conversacion_id=eq.${conversacionId}`,
+      },
+      async (payload) => {
+        if (!onMensajeEditado) return
+        const row = (payload.new ?? payload.old) as { mensaje_id: string }
+        const mensaje = await fetchMensajeDirectoCompleto(row.mensaje_id)
+        if (mensaje) onMensajeEditado(mensaje)
       }
     )
     .subscribe()
