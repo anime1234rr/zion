@@ -42,6 +42,19 @@ jobs:
             echo "created=true" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Crear el borrador de release para que electron-builder lo reutilice
+        if: steps.tag.outputs.created == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.tag.outputs.tag }}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Ya existe una release para $TAG, electron-builder la reutilizará."
+          else
+            gh release create "$TAG" --draft --title "$TAG" --notes ""
+          fi
+
   build:
     needs: tag
     if: needs.tag.outputs.created == 'true'
@@ -70,6 +83,14 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+
+      - name: Publicar la release (sacarla de estado borrador)
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ needs.tag.outputs.tag }}"
+          gh release edit "$TAG" --draft=false
 
       - name: Verificar que la release publicada tenga los artefactos completos
         shell: bash
