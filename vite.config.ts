@@ -8,7 +8,6 @@ import renderer from 'vite-plugin-electron-renderer'
 
 const { version } = createRequire(import.meta.url)('./package.json')
 
-// https://vite.dev/config/
 export default defineConfig({
   define: {
     __APP_VERSION__: JSON.stringify(version),

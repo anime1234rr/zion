@@ -192,19 +192,23 @@ export async function eliminarCanal(servidorId: string, canalId: string): Promis
   if (error) throw error
 }
 
+const CANALES_DE_TEXTO: ChannelType[] = ['text', 'code', 'announcement']
+const CANALES_DE_VOZ: ChannelType[] = ['voice']
+const TODOS_LOS_CANALES: ChannelType[] = ['text', 'code', 'announcement', 'voice']
+
 export const PERMISOS_CANAL_CONOCIDOS = [
-  { key: 'ver_canal', label: 'Visualizar el canal en la lista' },
-  { key: 'enviar_mensajes', label: 'Escribir mensajes de texto' },
-  { key: 'enviar_archivos', label: 'Subir imágenes o archivos adjuntos' },
-  { key: 'anadir_reacciones', label: 'Reaccionar a mensajes con emojis' },
-  { key: 'mencionar_todos', label: 'Usar etiquetas globales (@everyone / @here)' },
-  { key: 'usar_enlaces_externos', label: 'Enviar hipervínculos web' },
-  { key: 'leer_historial_mensajes', label: 'Consultar mensajes previos' },
-  { key: 'conectar_canal_voz', label: 'Entrar a salas de comunicación por voz' },
-  { key: 'hablar_voz', label: 'Emitir audio en canales de voz' },
-  { key: 'transmitir_video_pantalla', label: 'Compartir pantalla o cámara web' },
-  { key: 'usar_comandos_apps', label: 'Interactuar con bots o utilidades integradas' },
-  { key: 'silenciar_miembros_voz', label: 'Silenciar a otros usuarios en voz' },
+  { key: 'ver_canal', label: 'Visualizar el canal en la lista', enforced: true, tipos: TODOS_LOS_CANALES },
+  { key: 'enviar_mensajes', label: 'Escribir mensajes de texto', enforced: true, tipos: CANALES_DE_TEXTO },
+  { key: 'enviar_archivos', label: 'Subir imágenes o archivos adjuntos', enforced: true, tipos: CANALES_DE_TEXTO },
+  { key: 'anadir_reacciones', label: 'Reaccionar a mensajes con emojis', enforced: true, tipos: CANALES_DE_TEXTO },
+  { key: 'mencionar_todos', label: 'Usar etiquetas globales (@everyone / @here)', enforced: true, tipos: CANALES_DE_TEXTO },
+  { key: 'usar_enlaces_externos', label: 'Enviar hipervínculos web', enforced: true, tipos: CANALES_DE_TEXTO },
+  { key: 'leer_historial_mensajes', label: 'Consultar mensajes previos', enforced: true, tipos: CANALES_DE_TEXTO },
+  { key: 'usar_comandos_apps', label: 'Interactuar con bots o utilidades integradas', enforced: false, tipos: CANALES_DE_TEXTO },
+  { key: 'conectar_canal_voz', label: 'Entrar a salas de comunicación por voz', enforced: true, tipos: CANALES_DE_VOZ },
+  { key: 'hablar_voz', label: 'Emitir audio en canales de voz', enforced: true, tipos: CANALES_DE_VOZ },
+  { key: 'transmitir_video_pantalla', label: 'Compartir pantalla o cámara web', enforced: true, tipos: CANALES_DE_VOZ },
+  { key: 'silenciar_miembros_voz', label: 'Silenciar a otros usuarios en voz', enforced: true, tipos: CANALES_DE_VOZ },
 ] as const
 
 export interface ChannelRolePermisos {

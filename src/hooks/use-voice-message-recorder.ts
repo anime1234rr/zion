@@ -1,5 +1,19 @@
 import { useCallback, useRef, useState } from 'react'
 
+const CANDIDATE_MIME_TYPES = [
+  'audio/webm;codecs=opus',
+  'audio/webm',
+  'audio/ogg;codecs=opus',
+  'audio/mp4',
+]
+
+function pickSupportedMimeType(): string | undefined {
+  if (typeof MediaRecorder === 'undefined' || typeof MediaRecorder.isTypeSupported !== 'function') {
+    return undefined
+  }
+  return CANDIDATE_MIME_TYPES.find((type) => MediaRecorder.isTypeSupported(type))
+}
+
 interface UseVoiceMessageRecorderResult {
   recording: boolean
   seconds: number
@@ -39,14 +53,15 @@ export function useVoiceMessageRecorder(
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       streamRef.current = stream
-      const recorder = new MediaRecorder(stream, { mimeType: 'audio/webm' })
+      const mimeType = pickSupportedMimeType()
+      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined)
       chunksRef.current = []
 
       recorder.ondataavailable = (event) => {
         if (event.data.size > 0) chunksRef.current.push(event.data)
       }
       recorder.onstop = () => {
-        const blob = new Blob(chunksRef.current, { type: 'audio/webm' })
+        const blob = new Blob(chunksRef.current, { type: recorder.mimeType || mimeType || 'audio/webm' })
         const wasCancelled = cancelledRef.current
         cleanup()
         if (!wasCancelled && blob.size > 0) onRecorded(blob)

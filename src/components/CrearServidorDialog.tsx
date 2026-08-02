@@ -161,19 +161,26 @@ export function CrearServidorDialog({
                     onClick={() => setPlantillaId(plantilla.id)}
                     aria-pressed={plantillaId === plantilla.id}
                     className={cn(
-                      'rounded-lg border border-border px-3 py-2 text-left outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50',
+                      'flex items-start gap-2.5 rounded-lg border border-border px-3 py-2 text-left outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50',
                       plantillaId === plantilla.id &&
                         'border-primary bg-primary/10'
                     )}
                   >
-                    <span className="block text-sm font-medium text-foreground">
-                      {plantilla.nombre}
-                    </span>
-                    {plantilla.descripcion && (
-                      <span className="block text-xs text-muted-foreground">
-                        {plantilla.descripcion}
+                    {plantilla.iconoDefecto && (
+                      <span className="mt-0.5 text-base leading-none" aria-hidden>
+                        {plantilla.iconoDefecto}
                       </span>
                     )}
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm font-medium text-foreground">
+                        {plantilla.nombre}
+                      </span>
+                      {plantilla.descripcion && (
+                        <span className="block text-xs text-muted-foreground">
+                          {plantilla.descripcion}
+                        </span>
+                      )}
+                    </span>
                   </button>
                 ))}
               </div>

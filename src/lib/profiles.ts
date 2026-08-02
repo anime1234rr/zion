@@ -9,6 +9,7 @@ export interface PerfilRow {
   biografia: string | null
   estado: string
   color_banner: string
+  banner_url: string | null
   creado_at: string
   actualizado_at: string
 }
@@ -64,6 +65,15 @@ export async function actualizarAvatar(userId: string, avatarUrl: string) {
   if (error) throw error
 }
 
+export async function actualizarBanner(userId: string, bannerUrl: string | null) {
+  const { error } = await supabase
+    .from('perfiles')
+    .update({ banner_url: bannerUrl })
+    .eq('id', userId)
+
+  if (error) throw error
+}
+
 export interface EditableProfile {
   id: string
   nombreUsuario: string
@@ -72,6 +82,7 @@ export interface EditableProfile {
   status: UserStatus
   avatarUrl?: string
   colorBanner: string
+  bannerUrl?: string
 }
 
 function mapPerfilToEditableProfile(row: PerfilRow): EditableProfile {
@@ -83,6 +94,7 @@ function mapPerfilToEditableProfile(row: PerfilRow): EditableProfile {
     status: estadoToUserStatus[row.estado] ?? 'offline',
     avatarUrl: row.avatar_url ?? undefined,
     colorBanner: row.color_banner,
+    bannerUrl: row.banner_url ?? undefined,
   }
 }
 
@@ -133,6 +145,7 @@ export interface PublicProfile {
   status: UserStatus
   avatarUrl?: string
   colorBanner: string
+  bannerUrl?: string
   creadoAt: string
 }
 
@@ -146,6 +159,7 @@ function mapPerfilToPublicProfile(row: PerfilRow): PublicProfile {
     status: status !== 'offline' && !esPresenciaViva(row.actualizado_at) ? 'offline' : status,
     avatarUrl: row.avatar_url ?? undefined,
     colorBanner: row.color_banner,
+    bannerUrl: row.banner_url ?? undefined,
     creadoAt: row.creado_at,
   }
 }

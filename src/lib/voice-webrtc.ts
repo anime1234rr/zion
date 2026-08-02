@@ -1,10 +1,5 @@
 import { supabase } from '@/lib/supabase'
 
-// STUN público — alcanza para la mayoría de las conexiones. Para el
-// porcentaje de usuarios detrás de NAT simétrico/firewalls estrictos
-// hace falta sumar un servidor TURN acá (proveedor gestionado tipo
-// Metered.ca/Twilio, no coturn propio) — sin eso, esas conexiones
-// puntuales van a fallar en armar el peer connection.
 const ICE_SERVERS: RTCIceServer[] = [{ urls: 'stun:stun.l.google.com:19302' }]
 
 type SignalKind = 'offer' | 'answer' | 'ice'
@@ -25,7 +20,6 @@ interface SignalPayload {
 
 interface PeerState {
   pc: RTCPeerConnection
-  /** El de userId mayor cede en colisiones de oferta (patrón "perfect negotiation" de WebRTC). */
   polite: boolean
   makingOffer: boolean
   ignoreOffer: boolean
@@ -38,28 +32,6 @@ export interface VoiceWebRtcCallbacks {
   onPeerClosed: (userId: string) => void
 }
 
-/**
- * Malla P2P de audio/video sobre un canal de Realtime Broadcast por
- * canal de voz. Sin servidor de medios: cada par arma su propia
- * RTCPeerConnection y el contenido viaja directo entre navegadores —
- * Supabase nunca ve un byte de audio/video, solo señalización (SDP e
- * ICE, texto liviano).
- *
- * Agregar cámara o pantalla es simplemente addTrack() sobre las
- * conexiones ya existentes; WebRTC dispara "negotiationneeded" solo,
- * y esa renegociación va por el mismo canal de señalización que la
- * conexión inicial — no hace falta infraestructura nueva. Como dos
- * personas pueden renegociar casi al mismo tiempo (glare), se
- * implementa el patrón "perfect negotiation" (MDN): el peer de
- * userId mayor es "polite" y cede ante una oferta entrante en
- * colisión; el de userId menor es "impolite" y su oferta gana.
- *
- * Cada stream local (mic/cámara/pantalla) viaja con su propio
- * MediaStream.id, que WebRTC preserva íntegro del otro lado vía SDP
- * (msid). Ese id se manda como metadata junto a cada oferta/respuesta
- * para que el receptor pueda clasificar cada track entrante como
- * mic/cámara/pantalla sin adivinar.
- */
 export class VoiceWebRtcSession {
   private readonly userId: string
   private readonly callbacks: VoiceWebRtcCallbacks
@@ -83,13 +55,11 @@ export class VoiceWebRtcSession {
     this.channel.subscribe()
   }
 
-  /** Se llama cuando aparece un participante nuevo en el roster. */
   ensurePeer(remoteUserId: string): void {
     if (this.closed || remoteUserId === this.userId || this.peers.has(remoteUserId)) return
     this.peers.set(remoteUserId, this.createPeer(remoteUserId))
   }
 
-  /** Se llama cuando un participante se va del roster. */
   removePeer(remoteUserId: string): void {
     const state = this.peers.get(remoteUserId)
     if (!state) return
@@ -103,7 +73,6 @@ export class VoiceWebRtcSession {
     for (const track of this.micStream.getAudioTracks()) track.enabled = !muted
   }
 
-  /** Prende cámara o pantalla: agrega el stream a todas las conexiones activas. */
   addLocalStream(kind: 'camera' | 'screen', stream: MediaStream): void {
     if (kind === 'camera') this.cameraStream = stream
     else this.screenStream = stream
@@ -115,7 +84,6 @@ export class VoiceWebRtcSession {
     }
   }
 
-  /** Apaga cámara o pantalla: saca el stream de todas las conexiones y libera el hardware. */
   removeLocalStream(kind: 'camera' | 'screen'): void {
     const stream = kind === 'camera' ? this.cameraStream : this.screenStream
     if (!stream) return

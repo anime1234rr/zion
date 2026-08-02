@@ -27,8 +27,10 @@ import { formatFencedCode, parseFencedCode } from '@/lib/code-fence'
 import { groupMessages } from '@/lib/message-grouping'
 import { CHAT_ADJUNTO_ACCEPT, subirArchivoChat, subirNotaDeVoz } from '@/lib/storage'
 import { alternarReaccionMensaje, desfijarMensaje, fijarMensaje } from '@/lib/messages'
+import { tieneAlgunComandoDeSlash } from '@/lib/slash-commands'
 import { useMessageActions } from '@/hooks/use-message-actions'
 import { useServerPermissions } from '@/hooks/use-server-permissions'
+import { useChannelPermissions } from '@/hooks/use-channel-permissions'
 import { useVoiceMessageRecorder } from '@/hooks/use-voice-message-recorder'
 import type {
   ChannelItem,
@@ -67,6 +69,27 @@ import { EmojiPicker } from '@/components/EmojiPicker'
 import { MessageReactions } from '@/components/MessageReactions'
 import { VoiceMessageRecorder } from '@/components/VoiceMessageRecorder'
 import { VoiceMessagePlayer } from '@/components/VoiceMessagePlayer'
+import { SearchDialog } from '@/components/SearchDialog'
+import { SlashCommandPanel } from '@/components/SlashCommandPanel'
+
+const EVERYONE_MENTION_PATTERN = /(^|[^a-zA-Z0-9_])@(todos|aqu[ií])([^a-zA-Z0-9_]|$)/i
+const GLOBAL_MENTION_SPLIT_PATTERN = /(@(?:todos|aqu[ií])\b)/gi
+const EXTERNAL_LINK_PATTERN = /https?:\/\//i
+
+function renderMessageContent(content: string) {
+  const parts = content.split(GLOBAL_MENTION_SPLIT_PATTERN)
+  if (parts.length === 1) return content
+
+  return parts.map((part, index) =>
+    /^@(todos|aqu[ií])$/i.test(part) ? (
+      <span key={index} className="rounded bg-primary/15 px-1 font-medium text-primary">
+        {part}
+      </span>
+    ) : (
+      <span key={index}>{part}</span>
+    )
+  )
+}
 
 const channelIcon: Record<ChannelType, typeof Hash> = {
   text: Hash,
@@ -118,6 +141,7 @@ interface MessageRowProps {
   currentUserId: string
   canDeleteOthers: boolean
   canPinMessages: boolean
+  canReact: boolean
   serverId: string
   channelId: string
   onEditMessage: (messageId: string, content: string) => void
@@ -134,6 +158,7 @@ function MessageRow({
   currentUserId,
   canDeleteOthers,
   canPinMessages,
+  canReact,
   serverId,
   channelId,
   onEditMessage,
@@ -272,7 +297,7 @@ function MessageRow({
             <>
               {message.content && (
                 <p className="text-sm break-words whitespace-pre-wrap text-foreground/90">
-                  {message.content}
+                  {renderMessageContent(message.content)}
                   {message.editedAt && (
                     <span className="ml-1 text-[10px] text-muted-foreground">(editado)</span>
                   )}
@@ -320,20 +345,22 @@ function MessageRow({
             </>
           )}
 
-          <Popover>
-            <PopoverTrigger asChild>
-              <button
-                type="button"
-                aria-label="Agregar reacción"
-                className="absolute top-1/2 right-9 flex size-7 -translate-y-1/2 items-center justify-center rounded-md border border-border bg-background text-muted-foreground opacity-0 outline-none group-hover/message:opacity-100 hover:bg-muted hover:text-foreground focus-visible:opacity-100 focus-visible:ring-3 focus-visible:ring-ring/50"
-              >
-                <SmilePlus className="size-4" />
-              </button>
-            </PopoverTrigger>
-            <PopoverContent side="top" align="end" className="w-auto p-0">
-              <EmojiPicker onSelect={handleToggleReaction} />
-            </PopoverContent>
-          </Popover>
+          {canReact && (
+            <Popover>
+              <PopoverTrigger asChild>
+                <button
+                  type="button"
+                  aria-label="Agregar reacción"
+                  className="absolute top-1/2 right-9 flex size-7 -translate-y-1/2 items-center justify-center rounded-md border border-border bg-background text-muted-foreground opacity-0 outline-none group-hover/message:opacity-100 hover:bg-muted hover:text-foreground focus-visible:opacity-100 focus-visible:ring-3 focus-visible:ring-ring/50"
+                >
+                  <SmilePlus className="size-4" />
+                </button>
+              </PopoverTrigger>
+              <PopoverContent side="top" align="end" className="w-auto p-0">
+                <EmojiPicker onSelect={handleToggleReaction} />
+              </PopoverContent>
+            </Popover>
+          )}
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -408,6 +435,7 @@ interface ChatPrincipalProps {
   onCancelReply: () => void
   highlightMessageId?: string | null
   onNavigateToServer?: (serverId: string) => void
+  onJumpToChannelMessage: (channelId: string, messageId: string) => void
 }
 
 export function ChatPrincipal({
@@ -427,6 +455,7 @@ export function ChatPrincipal({
   onCancelReply,
   highlightMessageId,
   onNavigateToServer,
+  onJumpToChannelMessage,
 }: ChatPrincipalProps) {
   const [draft, setDraft] = useState('')
   const [pendingFile, setPendingFile] = useState<File | null>(null)
@@ -435,15 +464,23 @@ export function ChatPrincipal({
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [isDraggingFile, setIsDraggingFile] = useState(false)
   const [pinnedDialogOpen, setPinnedDialogOpen] = useState(false)
+  const [searchOpen, setSearchOpen] = useState(false)
   const [localHighlightId, setLocalHighlightId] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const scrollBottomRef = useRef<HTMLDivElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
   const dragCounterRef = useRef(0)
+  const sendVoiceOnStopRef = useRef(false)
   const HeaderIcon = channelIcon[channel.type]
   const groups = groupMessages(messages)
   const { isOwner, hasPermission } = useServerPermissions(server, currentUserId)
   const canDeleteOthers = isOwner || hasPermission('borrar_mensajes_ajenos')
   const canPinMessages = isOwner || hasPermission('fijar_mensajes')
+  const canUseSlashCommands = tieneAlgunComandoDeSlash(isOwner, hasPermission)
+  const [slashPanelOpen, setSlashPanelOpen] = useState(false)
+  const { canSendMessages, canSendFiles, canReact, canMentionEveryone, canUseExternalLinks } =
+    useChannelPermissions(server, channel.id, currentUserId)
+  const [composerError, setComposerError] = useState<string | null>(null)
 
   const pendingPreviewUrl = useMemo(
     () => (pendingFile ? URL.createObjectURL(pendingFile) : null),
@@ -467,7 +504,10 @@ export function ChatPrincipal({
     }
   }, [pendingVoicePreviewUrl])
 
-  const voiceRecorder = useVoiceMessageRecorder((blob) => setPendingVoiceBlob(blob))
+  const voiceRecorder = useVoiceMessageRecorder((blob) => {
+    setPendingVoiceBlob(blob)
+    textareaRef.current?.focus()
+  })
 
   useEffect(() => {
     if (highlightMessageId) return
@@ -553,7 +593,18 @@ export function ChatPrincipal({
   }
 
   async function submitDraft() {
+    if (uploading) return
     if (!draft.trim() && !pendingFile && !pendingVoiceBlob) return
+
+    setComposerError(null)
+    if (!canMentionEveryone && EVERYONE_MENTION_PATTERN.test(draft)) {
+      setComposerError('Solo el propietario y los moderadores pueden usar @todos y @aqui.')
+      return
+    }
+    if (!canUseExternalLinks && EXTERNAL_LINK_PATTERN.test(draft)) {
+      setComposerError('No tenés permiso para enviar enlaces en este canal.')
+      return
+    }
 
     let attachment: ChatAttachment | undefined
     if (pendingVoiceBlob) {
@@ -588,6 +639,13 @@ export function ChatPrincipal({
     setPendingVoiceBlob(null)
   }
 
+  useEffect(() => {
+    if (!pendingVoiceBlob || !sendVoiceOnStopRef.current) return
+    sendVoiceOnStopRef.current = false
+    submitDraft()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingVoiceBlob])
+
   function handleSubmit(event: React.FormEvent) {
     event.preventDefault()
     submitDraft()
@@ -596,6 +654,11 @@ export function ChatPrincipal({
   function handleKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault()
+      if (voiceRecorder.recording) {
+        sendVoiceOnStopRef.current = true
+        voiceRecorder.stop()
+        return
+      }
       submitDraft()
     }
   }
@@ -656,6 +719,7 @@ export function ChatPrincipal({
             <TooltipTrigger asChild>
               <button
                 type="button"
+                onClick={() => setSearchOpen(true)}
                 aria-label="Buscar"
                 className="flex size-8 items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50"
               >
@@ -738,6 +802,7 @@ export function ChatPrincipal({
                     currentUserId={currentUserId}
                     canDeleteOthers={canDeleteOthers}
                     canPinMessages={canPinMessages}
+                    canReact={canReact}
                     serverId={server.id}
                     channelId={channel.id}
                     onEditMessage={onEditMessage}
@@ -773,6 +838,19 @@ export function ChatPrincipal({
             </button>
           </div>
         )}
+        {canUseSlashCommands && slashPanelOpen && (
+          <SlashCommandPanel
+            server={server}
+            channel={channel}
+            currentUserId={currentUserId}
+            isOwner={isOwner}
+            hasPermission={hasPermission}
+            onClose={() => setSlashPanelOpen(false)}
+          />
+        )}
+
+        {!slashPanelOpen && (
+          <>
         {voiceRecorder.recording && (
           <VoiceMessageRecorder seconds={voiceRecorder.seconds} onCancel={voiceRecorder.cancel} />
         )}
@@ -828,6 +906,11 @@ export function ChatPrincipal({
             {uploadError}
           </p>
         )}
+        {composerError && (
+          <p className="mb-1.5 text-xs text-destructive" role="alert">
+            {composerError}
+          </p>
+        )}
         <div
           className={cn(
             'flex items-end gap-1 rounded-xl border border-input bg-muted/40 px-2 py-1.5',
@@ -846,7 +929,7 @@ export function ChatPrincipal({
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                disabled={voiceRecorder.recording || Boolean(pendingVoiceBlob)}
+                disabled={voiceRecorder.recording || Boolean(pendingVoiceBlob) || !canSendMessages || !canSendFiles}
                 aria-label="Adjuntar archivo"
                 className="flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-40"
               >
@@ -861,8 +944,9 @@ export function ChatPrincipal({
               <button
                 type="button"
                 onClick={insertCodeFence}
+                disabled={!canSendMessages}
                 aria-label="Insertar bloque de código"
-                className="flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50"
+                className="flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-40"
               >
                 <Code2 className="size-4" />
               </button>
@@ -875,7 +959,12 @@ export function ChatPrincipal({
               <button
                 type="button"
                 onClick={() => (voiceRecorder.recording ? voiceRecorder.stop() : voiceRecorder.start())}
-                disabled={Boolean(pendingFile)}
+                disabled={
+                  Boolean(pendingFile) ||
+                  Boolean(pendingVoiceBlob) ||
+                  !canSendMessages ||
+                  !canSendFiles
+                }
                 aria-pressed={voiceRecorder.recording}
                 aria-label={voiceRecorder.recording ? 'Detener grabación' : 'Grabar mensaje de voz'}
                 className={cn(
@@ -892,11 +981,25 @@ export function ChatPrincipal({
           </Tooltip>
 
           <Textarea
+            ref={textareaRef}
             value={draft}
-            onChange={(event) => setDraft(event.target.value)}
+            onChange={(event) => {
+              const value = event.target.value
+              if (canUseSlashCommands && value === '/' && draft === '') {
+                setSlashPanelOpen(true)
+                setDraft('')
+                return
+              }
+              setDraft(value)
+            }}
             onKeyDown={handleKeyDown}
-            placeholder={`Enviar mensaje a #${channel.name}`}
+            placeholder={
+              canSendMessages
+                ? `Enviar mensaje a #${channel.name}`
+                : 'No tenés permiso para enviar mensajes en este canal'
+            }
             rows={1}
+            disabled={!canSendMessages}
             className="max-h-52 min-h-8 flex-1 resize-none overflow-y-auto border-0 bg-transparent py-1 shadow-none focus-visible:ring-0"
           />
 
@@ -906,8 +1009,9 @@ export function ChatPrincipal({
                 <PopoverTrigger asChild>
                   <button
                     type="button"
+                    disabled={!canSendMessages}
                     aria-label="Emoji"
-                    className="flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50"
+                    className="flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-40"
                   >
                     <Smile className="size-4" />
                   </button>
@@ -922,13 +1026,20 @@ export function ChatPrincipal({
 
           <button
             type="submit"
-            disabled={(!draft.trim() && !pendingFile && !pendingVoiceBlob) || uploading || voiceRecorder.recording}
+            disabled={
+              (!draft.trim() && !pendingFile && !pendingVoiceBlob) ||
+              uploading ||
+              voiceRecorder.recording ||
+              !canSendMessages
+            }
             aria-label="Enviar mensaje"
             className="flex size-8 shrink-0 items-center justify-center rounded-md text-primary outline-none hover:bg-muted disabled:pointer-events-none disabled:opacity-40 focus-visible:ring-3 focus-visible:ring-ring/50"
           >
             <Send className="size-4" />
           </button>
         </div>
+          </>
+        )}
       </form>
 
       <PinnedMessagesDialog
@@ -937,6 +1048,23 @@ export function ChatPrincipal({
         channelId={channel.id}
         canUnpin={canPinMessages}
         onJumpToMessage={handleJumpToMessage}
+      />
+
+      <SearchDialog
+        open={searchOpen}
+        onOpenChange={setSearchOpen}
+        server={server}
+        channel={channel}
+        currentUserId={currentUserId}
+        onMessageUser={onMessageUser}
+        onJumpToMessage={(channelId, messageId) => {
+          setSearchOpen(false)
+          if (channelId === channel.id) {
+            handleJumpToMessage(messageId)
+          } else {
+            onJumpToChannelMessage(channelId, messageId)
+          }
+        }}
       />
     </section>
   )

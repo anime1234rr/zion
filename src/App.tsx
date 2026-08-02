@@ -411,7 +411,7 @@ function AppShell({ userId }: { userId: string }) {
           ) : null}
 
           {activeChannel && activeServer && activeChannel.type === 'voice' ? (
-            <VoiceChannelView channel={activeChannel} serverId={activeServer.id} currentUserId={userId} />
+            <VoiceChannelView channel={activeChannel} server={activeServer} currentUserId={userId} />
           ) : activeChannel && activeServer ? (
             <ChatPrincipal
               channel={activeChannel}
@@ -435,6 +435,10 @@ function AppShell({ userId }: { userId: string }) {
               onCancelReply={() => setReplyingTo(null)}
               highlightMessageId={highlightMessageId}
               onNavigateToServer={handleSelectServer}
+              onJumpToChannelMessage={(channelId, messageId) => {
+                setActiveChannelId(channelId)
+                setHighlightMessageId(messageId)
+              }}
             />
           ) : servers.length === 0 ? (
             <WelcomeDashboard

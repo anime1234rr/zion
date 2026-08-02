@@ -13,7 +13,7 @@ import {
   Volume2,
 } from 'lucide-react'
 
-import { cn } from '@/lib/utils'
+import { cn, getErrorMessage } from '@/lib/utils'
 import {
   joinVoiceChannel,
   leaveVoiceChannel,
@@ -21,10 +21,12 @@ import {
   stopScreenShare,
   toggleCamera,
   toggleDeafen,
+  toggleForceMuteParticipant,
   toggleMute,
   useVoiceConnection,
 } from '@/hooks/use-voice-connection'
-import type { ChannelItem } from '@/lib/types'
+import { useChannelPermissions } from '@/hooks/use-channel-permissions'
+import type { ChannelItem, ServerItem } from '@/lib/types'
 import { Avatar, AvatarBadge, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { VideoTile } from '@/components/VideoTile'
@@ -33,7 +35,7 @@ import { AudioSettingsDialog } from '@/components/AudioSettingsDialog'
 
 interface VoiceChannelViewProps {
   channel: ChannelItem
-  serverId: string
+  server: ServerItem
   currentUserId: string
 }
 
@@ -48,7 +50,7 @@ interface Tile {
   screenStream?: MediaStream
 }
 
-export function VoiceChannelView({ channel, serverId, currentUserId }: VoiceChannelViewProps) {
+export function VoiceChannelView({ channel, server, currentUserId }: VoiceChannelViewProps) {
   const {
     connectedChannelId,
     connecting,
@@ -65,15 +67,23 @@ export function VoiceChannelView({ channel, serverId, currentUserId }: VoiceChan
   } = useVoiceConnection()
   const [pickerOpen, setPickerOpen] = useState(false)
   const [audioSettingsOpen, setAudioSettingsOpen] = useState(false)
+  const [forceMuteError, setForceMuteError] = useState<string | null>(null)
+  const {
+    loading: permissionsLoading,
+    canForceMuteVoice,
+    canConnectVoice,
+    canSpeakVoice,
+  } = useChannelPermissions(server, channel.id, currentUserId)
 
   const isConnectedHere = connectedChannelId === channel.id
 
   useEffect(() => {
+    if (permissionsLoading || !canConnectVoice) return
     if (connectedChannelId !== channel.id) {
-      joinVoiceChannel(channel.id, currentUserId, serverId, channel.name)
+      joinVoiceChannel(channel.id, currentUserId, server.id, channel.name)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [channel.id, currentUserId, serverId])
+  }, [channel.id, currentUserId, server.id, permissionsLoading, canConnectVoice])
 
   const tiles: Tile[] = participants.map((participant) => {
     const isSelf = participant.user.id === currentUserId
@@ -89,6 +99,10 @@ export function VoiceChannelView({ channel, serverId, currentUserId }: VoiceChan
     }
   })
 
+  const otherTiles = tiles.filter((t) => !t.isSelf)
+  const selfShownInCorner = cameraOn && Boolean(localCameraStream)
+  const galleryTiles = selfShownInCorner ? otherTiles : tiles
+
   const focusTile = tiles.find((t) => t.screenStream)
   const selfScreenIsFocused = Boolean(focusTile?.isSelf && focusTile.screenStream)
 
@@ -97,6 +111,15 @@ export function VoiceChannelView({ channel, serverId, currentUserId }: VoiceChan
       stopScreenShare()
     } else {
       setPickerOpen(true)
+    }
+  }
+
+  async function handleForceMute(tile: Tile) {
+    setForceMuteError(null)
+    try {
+      await toggleForceMuteParticipant(tile.userId, !tile.muted)
+    } catch (err) {
+      setForceMuteError(getErrorMessage(err))
     }
   }
 
@@ -110,13 +133,25 @@ export function VoiceChannelView({ channel, serverId, currentUserId }: VoiceChan
       </header>
 
       <div className="relative flex flex-1 flex-col items-center justify-center gap-4 overflow-y-auto p-6">
-        {connecting && !isConnectedHere && (
+        {!permissionsLoading && !canConnectVoice && !isConnectedHere && (
+          <p className="max-w-sm text-center text-sm text-muted-foreground">
+            No tenés permiso para conectarte a este canal de voz.
+          </p>
+        )}
+
+        {canConnectVoice && connecting && !isConnectedHere && (
           <p className="text-sm text-muted-foreground">Conectando…</p>
         )}
 
         {error && (
           <p className="max-w-sm text-center text-sm text-destructive" role="alert">
             {error}
+          </p>
+        )}
+
+        {forceMuteError && (
+          <p className="max-w-sm text-center text-sm text-destructive" role="alert">
+            {forceMuteError}
           </p>
         )}
 
@@ -141,19 +176,29 @@ export function VoiceChannelView({ channel, serverId, currentUserId }: VoiceChan
                   </div>
                 </div>
                 <div className="flex w-40 shrink-0 flex-col gap-2 overflow-y-auto">
-                  {tiles.map((tile) => (
-                    <SmallTile key={tile.userId} tile={tile} />
+                  {galleryTiles.map((tile) => (
+                    <SmallTile
+                      key={tile.userId}
+                      tile={tile}
+                      canForceMute={canForceMuteVoice}
+                      onForceMute={handleForceMute}
+                    />
                   ))}
                 </div>
               </div>
-            ) : tiles.length <= 1 && !tiles.some((t) => t.cameraStream) ? (
+            ) : otherTiles.length === 0 ? (
               <p className="text-sm text-muted-foreground">
                 Sos el único acá. Invitá a alguien a sumarse.
               </p>
             ) : (
               <div className="grid w-full flex-1 auto-rows-fr grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-                {tiles.map((tile) => (
-                  <GalleryTile key={tile.userId} tile={tile} />
+                {galleryTiles.map((tile) => (
+                  <GalleryTile
+                    key={tile.userId}
+                    tile={tile}
+                    canForceMute={canForceMuteVoice}
+                    onForceMute={handleForceMute}
+                  />
                 ))}
               </div>
             )}
@@ -162,7 +207,14 @@ export function VoiceChannelView({ channel, serverId, currentUserId }: VoiceChan
               <ControlButton
                 onClick={() => toggleMute()}
                 active={muted}
-                label={muted ? 'Activar micrófono' : 'Silenciar micrófono'}
+                disabled={!canSpeakVoice}
+                label={
+                  !canSpeakVoice
+                    ? 'No tenés permiso para hablar en este canal'
+                    : muted
+                      ? 'Activar micrófono'
+                      : 'Silenciar micrófono'
+                }
               >
                 {muted ? <MicOff className="size-4" /> : <Mic className="size-4" />}
               </ControlButton>
@@ -236,12 +288,14 @@ export function ControlButton({
   active,
   label,
   activeColor = 'destructive',
+  disabled = false,
   children,
 }: {
   onClick: () => void
   active: boolean
   label: string
   activeColor?: 'destructive' | 'primary'
+  disabled?: boolean
   children: React.ReactNode
 }) {
   return (
@@ -250,10 +304,11 @@ export function ControlButton({
         <button
           type="button"
           onClick={onClick}
+          disabled={disabled}
           aria-pressed={active}
           aria-label={label}
           className={cn(
-            'flex size-9 items-center justify-center rounded-full text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50',
+            'flex size-9 items-center justify-center rounded-full text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-40',
             active && activeColor === 'destructive' && 'bg-destructive/10 text-destructive',
             active && activeColor === 'primary' && 'bg-primary/10 text-primary'
           )}
@@ -312,7 +367,47 @@ function TileAvatar({ tile, size }: { tile: Tile; size: 'lg' | 'sm' }) {
   )
 }
 
-function GalleryTile({ tile }: { tile: Tile }) {
+interface TileModeratorProps {
+  canForceMute: boolean
+  onForceMute: (tile: Tile) => void
+}
+
+function ForceMuteButton({
+  tile,
+  onForceMute,
+  variant = 'light',
+}: {
+  tile: Tile
+  onForceMute: (tile: Tile) => void
+  variant?: 'light' | 'dark'
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation()
+            onForceMute(tile)
+          }}
+          aria-label={tile.muted ? `Quitar silencio a ${tile.name}` : `Silenciar a ${tile.name}`}
+          className={cn(
+            'flex size-6 shrink-0 items-center justify-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring/50',
+            variant === 'dark'
+              ? 'text-white/80 hover:bg-white/20 hover:text-white'
+              : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+            tile.muted && 'text-destructive'
+          )}
+        >
+          {tile.muted ? <MicOff className="size-3.5" /> : <Mic className="size-3.5" />}
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="top">{tile.muted ? 'Quitar silencio' : 'Silenciar en voz'}</TooltipContent>
+    </Tooltip>
+  )
+}
+
+function GalleryTile({ tile, canForceMute, onForceMute }: { tile: Tile } & TileModeratorProps) {
   const stream = tile.cameraStream ?? tile.screenStream
 
   return (
@@ -333,13 +428,16 @@ function GalleryTile({ tile }: { tile: Tile }) {
       )}
       <div className="absolute inset-x-0 bottom-0 flex items-center gap-1 bg-gradient-to-t from-black/70 to-transparent px-2 py-1.5">
         {tile.muted && <MicOff className="size-3 text-destructive" />}
-        <span className="truncate text-xs font-medium text-white">{tile.name}</span>
+        <span className="min-w-0 flex-1 truncate text-xs font-medium text-white">{tile.name}</span>
+        {canForceMute && !tile.isSelf && (
+          <ForceMuteButton tile={tile} onForceMute={onForceMute} variant="dark" />
+        )}
       </div>
     </div>
   )
 }
 
-function SmallTile({ tile }: { tile: Tile }) {
+function SmallTile({ tile, canForceMute, onForceMute }: { tile: Tile } & TileModeratorProps) {
   const stream = tile.cameraStream
 
   return (
@@ -358,6 +456,7 @@ function SmallTile({ tile }: { tile: Tile }) {
       )}
       <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{tile.name}</span>
       {tile.muted && <MicOff className="size-3 shrink-0 text-destructive" />}
+      {canForceMute && !tile.isSelf && <ForceMuteButton tile={tile} onForceMute={onForceMute} />}
     </div>
   )
 }

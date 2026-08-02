@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Crown, Mic, MicOff } from 'lucide-react'
 
 import {
+  displayMemberName,
   listarMiembros,
   suscribirseAMiembrosDeServidor,
   type ServerMember,
@@ -103,7 +104,7 @@ export function PanelMiembros({ server, currentUserId, onMessageUser }: PanelMie
       style={{ width }}
     >
       <ResizeHandle edge="left" active={resizing} onPointerDown={handlePointerDown} />
-      <ScrollArea className="flex-1">
+      <ScrollArea className="min-h-0 flex-1">
         <div className="flex flex-col gap-4 px-2 py-3">
           {loading && (
             <p className="px-1.5 text-xs text-muted-foreground">Cargando…</p>
@@ -200,12 +201,12 @@ function MemberGroup({
                       <AvatarImage src={member.user.avatarUrl} />
                     )}
                     <AvatarFallback>
-                      {member.user.name.slice(0, 2).toUpperCase()}
+                      {displayMemberName(member).slice(0, 2).toUpperCase()}
                     </AvatarFallback>
                     <AvatarBadge className={statusColor[member.user.status]} />
                   </Avatar>
                   <span className="flex min-w-0 items-center gap-1 truncate text-sm text-sidebar-foreground">
-                    <span className="truncate">{member.user.name}</span>
+                    <span className="truncate">{displayMemberName(member)}</span>
                     {member.user.id === server.ownerId && (
                       <Crown className="size-3 shrink-0 text-muted-foreground" />
                     )}

@@ -13,7 +13,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSession(data.session)
       setLoading(false)
     })
-//test
     const { data: subscription } = supabase.auth.onAuthStateChange(
       (_event, nextSession) => {
         setSession(nextSession)

@@ -43,7 +43,6 @@ export function setAudioSetting(key: keyof AudioProcessingSettings, value: boole
   for (const listener of listeners) listener(settings)
 }
 
-/** Para que use-voice-connection.ts reaplique los ajustes en vivo al track de mic activo, sin reconectar. */
 export function suscribirseAAudioSettings(listener: (settings: AudioProcessingSettings) => void): () => void {
   listeners.add(listener)
   return () => listeners.delete(listener)

@@ -4,11 +4,13 @@ export interface PlantillaServidor {
   id: string
   nombre: string
   descripcion: string | null
+  iconoDefecto: string | null
 }
 
 export interface PlantillaCanalPreview {
   nombre: string
   tipo: string
+  categoria?: string | null
 }
 
 export interface PlantillaRolPreview {
@@ -26,6 +28,7 @@ interface PlantillaRow {
   id: string
   nombre_plantilla: string
   descripcion: string | null
+  icono_defecto: string | null
 }
 
 interface PlantillaDetalleRow extends PlantillaRow {
@@ -36,7 +39,7 @@ interface PlantillaDetalleRow extends PlantillaRow {
 export async function listarPlantillas(): Promise<PlantillaServidor[]> {
   const { data, error } = await supabase
     .from('plantillas_servidor')
-    .select('id, nombre_plantilla, descripcion')
+    .select('id, nombre_plantilla, descripcion, icono_defecto')
     .order('creado_at', { ascending: true })
     .returns<PlantillaRow[]>()
 
@@ -45,6 +48,7 @@ export async function listarPlantillas(): Promise<PlantillaServidor[]> {
     id: row.id,
     nombre: row.nombre_plantilla,
     descripcion: row.descripcion,
+    iconoDefecto: row.icono_defecto,
   }))
 }
 
@@ -53,7 +57,7 @@ export async function listarPlantillasConDetalle(): Promise<
 > {
   const { data, error } = await supabase
     .from('plantillas_servidor')
-    .select('id, nombre_plantilla, descripcion, canales_iniciales, roles_iniciales')
+    .select('id, nombre_plantilla, descripcion, icono_defecto, canales_iniciales, roles_iniciales')
     .order('creado_at', { ascending: true })
     .returns<PlantillaDetalleRow[]>()
 
@@ -62,6 +66,7 @@ export async function listarPlantillasConDetalle(): Promise<
     id: row.id,
     nombre: row.nombre_plantilla,
     descripcion: row.descripcion,
+    iconoDefecto: row.icono_defecto,
     canales: row.canales_iniciales ?? [],
     roles: (row.roles_iniciales ?? []).map((rol) => ({
       nombre: rol.nombre,

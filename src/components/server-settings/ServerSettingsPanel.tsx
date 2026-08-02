@@ -4,6 +4,7 @@ import {
   Blocks,
   Info,
   LayoutTemplate,
+  ScrollText,
   Rocket,
   ShieldCheck,
   Smile,
@@ -18,6 +19,7 @@ import { GeneralSection } from '@/components/server-settings/GeneralSection'
 import { PersonasSection } from '@/components/server-settings/PersonasSection'
 import { PlantillaSection } from '@/components/server-settings/PlantillaSection'
 import { ComingSoonSection } from '@/components/server-settings/ComingSoonSection'
+import { AuditLogSection } from '@/components/server-settings/AuditLogSection'
 import { DangerZoneSection } from '@/components/server-settings/DangerZoneSection'
 
 type SectionId =
@@ -26,6 +28,7 @@ type SectionId =
   | 'personas'
   | 'apps'
   | 'moderacion'
+  | 'auditoria'
   | 'comunidad'
   | 'plantilla'
   | 'zona-peligro'
@@ -41,6 +44,7 @@ const sections: {
   { id: 'personas', label: 'Personas', icon: Users, group: 1 },
   { id: 'apps', label: 'Apps', icon: Blocks, group: 1 },
   { id: 'moderacion', label: 'Moderación', icon: ShieldCheck, group: 1 },
+  { id: 'auditoria', label: 'Auditoría', icon: ScrollText, group: 1 },
   { id: 'comunidad', label: 'Activar comunidad', icon: Rocket, group: 2 },
   { id: 'plantilla', label: 'Plantilla', icon: LayoutTemplate, group: 2 },
   { id: 'zona-peligro', label: 'Zona de peligro', icon: AlertTriangle, group: 2 },
@@ -91,6 +95,7 @@ export function ServerSettingsPanel({
             {sections
               .filter((section) => section.group === group)
               .filter((section) => section.id !== 'zona-peligro' || isOwner)
+              .filter((section) => section.id !== 'auditoria' || isOwner || hasPermission('ver_registros'))
               .map((section) => (
                 <button
                   key={section.id}
@@ -127,6 +132,7 @@ export function ServerSettingsPanel({
             <GeneralSection
               server={server}
               canEdit={hasPermission('gestionar_servidor')}
+              canManageInvites={isOwner || hasPermission('gestionar_invitaciones')}
               onUpdated={onServerUpdated}
             />
           )}
@@ -154,8 +160,11 @@ export function ServerSettingsPanel({
             <ComingSoonSection
               icon={ShieldCheck}
               title="Moderación"
-              description="Filtros de contenido, reglas de seguridad y registro de auditoría todavía no están disponibles."
+              description="Filtros de contenido y reglas de seguridad todavía no están disponibles. El registro de auditoría ya está en la pestaña Auditoría."
             />
+          )}
+          {active === 'auditoria' && (isOwner || hasPermission('ver_registros')) && (
+            <AuditLogSection key={server.id} server={server} />
           )}
           {active === 'comunidad' && (
             <ComingSoonSection

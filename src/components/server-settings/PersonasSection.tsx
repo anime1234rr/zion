@@ -1,13 +1,21 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ChevronDown, Crown, Plus, UserX } from 'lucide-react'
+import { Ban, ChevronDown, Clock, Crown, MoreHorizontal, Pencil, Plus, UserX, Volume2 } from 'lucide-react'
 
 import {
+  actualizarApodoMiembro,
   actualizarRolDeMiembro,
+  banearMiembro,
+  desbanearMiembro,
+  displayMemberName,
   expulsarMiembro,
+  listarBaneados,
   listarMiembros,
   listarRolesDeServidor,
+  quitarSilencioMiembro,
+  silenciarMiembro,
   suscribirseAMiembrosDeServidor,
   suscribirseARolesDeServidor,
+  type BannedMember,
   type ServerMember,
   type ServerRole,
 } from '@/lib/members'
@@ -24,11 +32,31 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { RoleEditorPanel } from '@/components/server-settings/RoleEditorPanel'
 import { ConfirmarAccionDialog } from '@/components/server-settings/ConfirmarAccionDialog'
+import { BanMemberDialog } from '@/components/server-settings/BanMemberDialog'
+import { EditNicknameDialog } from '@/components/server-settings/EditNicknameDialog'
 import { UserProfileCard } from '@/components/UserProfileCard'
+
+const DURACIONES_SILENCIO = [
+  { label: '10 minutos', minutos: 10 },
+  { label: '1 hora', minutos: 60 },
+  { label: '1 día', minutos: 60 * 24 },
+  { label: '1 semana', minutos: 60 * 24 * 7 },
+]
+
+function estaSilenciado(member: ServerMember): boolean {
+  return Boolean(member.silencedUntil) && new Date(member.silencedUntil as string).getTime() > Date.now()
+}
+
+function calcularSilenciadoHasta(minutos: number): string {
+  return new Date(Date.now() + minutos * 60_000).toISOString()
+}
 
 const statusColor: Record<UserStatus, string> = {
   online: 'bg-online',
@@ -42,7 +70,7 @@ interface PersonasSectionProps {
   currentUserId: string
 }
 
-type Tab = 'miembros' | 'roles'
+type Tab = 'miembros' | 'roles' | 'baneados'
 type RoleSelection = string | 'new' | 'owner' | null
 
 const OWNER_SYNTHETIC_ROLE_ID = 'owner'
@@ -51,14 +79,22 @@ export function PersonasSection({ server, currentUserId }: PersonasSectionProps)
   const { isOwner, hasPermission } = useServerPermissions(server, currentUserId)
   const canManageRoles = hasPermission('gestionar_roles')
   const canExpelMembers = isOwner || hasPermission('expulsar_miembros')
+  const canBanMembers = isOwner || hasPermission('banear_miembros')
+  const canTimeoutMembers = isOwner || hasPermission('silenciar_miembros')
+  const canManageNicknames = isOwner || hasPermission('gestionar_apodos')
   const [tab, setTab] = useState<Tab>('miembros')
   const [members, setMembers] = useState<ServerMember[]>([])
   const [roles, setRoles] = useState<ServerRole[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [expelTarget, setExpelTarget] = useState<ServerMember | null>(null)
+  const [banTarget, setBanTarget] = useState<ServerMember | null>(null)
+  const [nicknameTarget, setNicknameTarget] = useState<ServerMember | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const [selectedRoleId, setSelectedRoleId] = useState<RoleSelection>(null)
+  const [bannedMembers, setBannedMembers] = useState<BannedMember[]>([])
+  const [bannedLoading, setBannedLoading] = useState(false)
+  const [bannedError, setBannedError] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelado = false
@@ -87,6 +123,31 @@ export function PersonasSection({ server, currentUserId }: PersonasSectionProps)
       unsubRoles()
     }
   }, [server.id])
+
+  useEffect(() => {
+    if (tab !== 'baneados' || !canBanMembers) return
+
+    let cancelado = false
+
+    function cargar() {
+      return Promise.resolve()
+        .then(() => {
+          if (cancelado) return undefined
+          setBannedLoading(true)
+          setBannedError(null)
+        })
+        .then(() => listarBaneados(server.id))
+        .then((data) => !cancelado && setBannedMembers(data))
+        .catch((err) => !cancelado && setBannedError(getErrorMessage(err)))
+        .finally(() => !cancelado && setBannedLoading(false))
+    }
+
+    cargar()
+
+    return () => {
+      cancelado = true
+    }
+  }, [tab, canBanMembers, server.id])
 
   const sortedMembers = useMemo(() => {
     return [...members].sort((a, b) => {
@@ -146,6 +207,61 @@ export function PersonasSection({ server, currentUserId }: PersonasSectionProps)
     setSelectedRoleId(role.id)
   }
 
+  async function handleSilenciar(member: ServerMember, minutos: number) {
+    setActionError(null)
+    const hasta = calcularSilenciadoHasta(minutos)
+    const previous = members
+    setMembers((prev) =>
+      prev.map((m) => (m.membershipId === member.membershipId ? { ...m, silencedUntil: hasta } : m))
+    )
+    try {
+      await silenciarMiembro(member.membershipId, minutos)
+    } catch (err) {
+      setMembers(previous)
+      setActionError(getErrorMessage(err))
+    }
+  }
+
+  async function handleQuitarSilencio(member: ServerMember) {
+    setActionError(null)
+    const previous = members
+    setMembers((prev) =>
+      prev.map((m) => (m.membershipId === member.membershipId ? { ...m, silencedUntil: null } : m))
+    )
+    try {
+      await quitarSilencioMiembro(member.membershipId)
+    } catch (err) {
+      setMembers(previous)
+      setActionError(getErrorMessage(err))
+    }
+  }
+
+  async function handleUpdateNickname(member: ServerMember, apodo: string) {
+    const previous = members
+    const nickname = apodo.trim() || null
+    setMembers((prev) =>
+      prev.map((m) => (m.membershipId === member.membershipId ? { ...m, nickname } : m))
+    )
+    try {
+      await actualizarApodoMiembro(member.membershipId, apodo)
+    } catch (err) {
+      setMembers(previous)
+      throw err
+    }
+  }
+
+  async function handleDesbanear(banned: BannedMember) {
+    setBannedError(null)
+    const previous = bannedMembers
+    setBannedMembers((prev) => prev.filter((b) => b.id !== banned.id))
+    try {
+      await desbanearMiembro(server.id, banned.userId)
+    } catch (err) {
+      setBannedMembers(previous)
+      setBannedError(getErrorMessage(err))
+    }
+  }
+
   function handleRoleDeleted(roleId: string) {
     setRoles((prev) => prev.filter((r) => r.id !== roleId))
     setMembers((prev) =>
@@ -167,6 +283,7 @@ export function PersonasSection({ server, currentUserId }: PersonasSectionProps)
           [
             ['miembros', 'Miembros'],
             ...(canManageRoles ? ([['roles', 'Roles']] as const) : []),
+            ...(canBanMembers ? ([['baneados', 'Baneados']] as const) : []),
           ] as const
         ).map(([id, label]) => (
           <button
@@ -225,15 +342,21 @@ export function PersonasSection({ server, currentUserId }: PersonasSectionProps)
                         <AvatarImage src={member.user.avatarUrl} />
                       )}
                       <AvatarFallback>
-                        {member.user.name.slice(0, 2).toUpperCase()}
+                        {displayMemberName(member).slice(0, 2).toUpperCase()}
                       </AvatarFallback>
                       <AvatarBadge className={statusColor[member.user.status]} />
                     </Avatar>
                     <span className="min-w-0 flex-1">
                       <span className="flex items-center gap-1.5 truncate text-sm font-medium text-foreground">
-                        {member.user.name}
+                        {displayMemberName(member)}
                         {isMemberOwner && (
                           <Crown className="size-3.5 shrink-0 text-muted-foreground" />
+                        )}
+                        {estaSilenciado(member) && (
+                          <span className="flex shrink-0 items-center gap-0.5 text-[11px] font-normal text-muted-foreground">
+                            <Clock className="size-3" />
+                            Silenciado
+                          </span>
                         )}
                       </span>
                     </span>
@@ -293,16 +416,74 @@ export function PersonasSection({ server, currentUserId }: PersonasSectionProps)
                   </DropdownMenu>
                 )}
 
-                {canExpelMembers && !isMemberOwner && member.user.id !== currentUserId && (
-                  <button
-                    type="button"
-                    onClick={() => setExpelTarget(member)}
-                    aria-label={`Expulsar a ${member.user.name}`}
-                    className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-destructive/10 hover:text-destructive focus-visible:ring-3 focus-visible:ring-ring/50"
-                  >
-                    <UserX className="size-4" />
-                  </button>
-                )}
+                {(() => {
+                  const showModerationActions =
+                    !isMemberOwner &&
+                    member.user.id !== currentUserId &&
+                    (canExpelMembers || canBanMembers || canTimeoutMembers)
+                  const showNicknameAction =
+                    member.user.id === currentUserId || (canManageNicknames && !isMemberOwner)
+
+                  if (!showModerationActions && !showNicknameAction) return null
+
+                  return (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button
+                          type="button"
+                          aria-label={`Más acciones para ${displayMemberName(member)}`}
+                          className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50"
+                        >
+                          <MoreHorizontal className="size-4" />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-52">
+                        {showNicknameAction && (
+                          <DropdownMenuItem onSelect={() => setNicknameTarget(member)}>
+                            <Pencil className="size-4" />
+                            Cambiar apodo
+                          </DropdownMenuItem>
+                        )}
+                        {showModerationActions && canTimeoutMembers && !estaSilenciado(member) && (
+                          <DropdownMenuSub>
+                            <DropdownMenuSubTrigger>
+                              <Clock className="size-4" />
+                              Silenciar
+                            </DropdownMenuSubTrigger>
+                            <DropdownMenuSubContent>
+                              {DURACIONES_SILENCIO.map((duracion) => (
+                                <DropdownMenuItem
+                                  key={duracion.minutos}
+                                  onSelect={() => handleSilenciar(member, duracion.minutos)}
+                                >
+                                  {duracion.label}
+                                </DropdownMenuItem>
+                              ))}
+                            </DropdownMenuSubContent>
+                          </DropdownMenuSub>
+                        )}
+                        {showModerationActions && canTimeoutMembers && estaSilenciado(member) && (
+                          <DropdownMenuItem onSelect={() => handleQuitarSilencio(member)}>
+                            <Volume2 className="size-4" />
+                            Quitar silencio
+                          </DropdownMenuItem>
+                        )}
+                        {showModerationActions && canExpelMembers && (
+                          <DropdownMenuItem onSelect={() => setExpelTarget(member)}>
+                            <UserX className="size-4" />
+                            Expulsar
+                          </DropdownMenuItem>
+                        )}
+                        {showModerationActions && canBanMembers && (
+                          <DropdownMenuItem variant="destructive" onSelect={() => setBanTarget(member)}>
+                            <Ban className="size-4" />
+                            Banear
+                          </DropdownMenuItem>
+                        )}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )
+                })()}
               </div>
             )
           })}
@@ -323,6 +504,72 @@ export function PersonasSection({ server, currentUserId }: PersonasSectionProps)
             setExpelTarget(null)
           }}
         />
+      )}
+
+      {banTarget && (
+        <BanMemberDialog
+          open={Boolean(banTarget)}
+          onOpenChange={(next) => {
+            if (!next) setBanTarget(null)
+          }}
+          memberName={banTarget.user.name}
+          onConfirm={async (razon) => {
+            await banearMiembro(banTarget.membershipId, razon)
+            setBanTarget(null)
+          }}
+        />
+      )}
+
+      {nicknameTarget && (
+        <EditNicknameDialog
+          open={Boolean(nicknameTarget)}
+          onOpenChange={(next) => {
+            if (!next) setNicknameTarget(null)
+          }}
+          memberName={nicknameTarget.user.name}
+          currentNickname={nicknameTarget.nickname ?? ''}
+          onConfirm={(apodo) => handleUpdateNickname(nicknameTarget, apodo)}
+        />
+      )}
+
+      {!loading && !error && tab === 'baneados' && (
+        <div className="mt-4 flex flex-col gap-1">
+          {bannedLoading && <p className="text-sm text-muted-foreground">Cargando…</p>}
+          {bannedError && (
+            <p className="text-sm text-destructive" role="alert">
+              {bannedError}
+            </p>
+          )}
+          {!bannedLoading && !bannedError && bannedMembers.length === 0 && (
+            <p className="text-sm text-muted-foreground">Nadie está baneado en este servidor.</p>
+          )}
+          {bannedMembers.map((banned) => (
+            <div
+              key={banned.id}
+              className="flex items-center gap-3 rounded-lg px-2 py-2 hover:bg-muted/50"
+            >
+              <Avatar>
+                {banned.user.avatarUrl && <AvatarImage src={banned.user.avatarUrl} />}
+                <AvatarFallback>{banned.user.name.slice(0, 2).toUpperCase()}</AvatarFallback>
+              </Avatar>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-medium text-foreground">
+                  {banned.user.name}
+                </span>
+                {banned.reason && (
+                  <span className="block truncate text-xs text-muted-foreground">{banned.reason}</span>
+                )}
+              </span>
+              <button
+                type="button"
+                onClick={() => handleDesbanear(banned)}
+                className="rounded-md border border-border px-2.5 py-1 text-xs font-medium text-foreground outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50"
+              >
+                Desbanear
+              </button>
+            </div>
+          ))}
+        </div>
       )}
 
       {!loading && !error && tab === 'roles' && canManageRoles && (

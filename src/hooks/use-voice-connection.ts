@@ -5,6 +5,7 @@ import { selectScreenSource } from '@/lib/electron-bridge'
 import { getAudioSettings, suscribirseAAudioSettings } from '@/hooks/use-audio-settings'
 import {
   actualizarEstadoVoz,
+  forzarSilencioVoz,
   iniciarHeartbeatVoz,
   listarParticipantesDeVoz,
   salirDeVoz,
@@ -24,12 +25,6 @@ const SCREEN_CONSTRAINTS: MediaStreamConstraints['video'] = {
   frameRate: { ideal: 15, max: 20 },
 }
 
-// Detección de "está hablando": en un mesh P2P no hay servidor que
-// calcule niveles de audio por vos, así que cada cliente analiza sus
-// propios streams (el mic local + el de cada peer) con Web Audio.
-// Por eso el indicador de voz solo puede mostrarse para el canal al
-// que estás conectado ahora mismo — no hay forma de saber quién habla
-// en un canal en el que no tenés una conexión de audio activa.
 const SPEAKING_THRESHOLD = 0.02
 const SPEAKING_HOLD_MS = 350
 const SPEAKING_POLL_MS = 100
@@ -246,13 +241,19 @@ async function refreshRoster(canalId: string) {
       }
     }
 
+    const self = participants.find((p) => p.user.id === currentUserId)
+    if (self && self.muted !== state.muted) {
+      session?.setMuted(self.muted)
+      setState({ participants, muted: self.muted })
+      return
+    }
+
     setState({ participants })
   } catch (err) {
     console.error('No se pudo actualizar la lista de conectados a voz', err)
   }
 }
 
-/** Cuántas personas (no streams) tienen video activo ahora mismo en el canal. */
 function activeVideoParticipantCount(excludingSelf: boolean): number {
   return state.participants.filter((p) => {
     if (excludingSelf && p.user.id === currentUserId) return false
@@ -447,10 +448,6 @@ export async function startScreenShare(sourceId: string, includeAudio: boolean):
       audio: includeAudio,
     })
 
-    // Si el usuario corta la transmisión desde afuera de Zion (barra
-    // del SO, atajo, cerrar la ventana compartida), el track termina
-    // solo — hay que reflejarlo acá, no queda forma de que la UI se
-    // entere si no escuchamos esto.
     stream.getVideoTracks()[0]?.addEventListener('ended', () => {
       stopScreenShare()
     })
@@ -473,6 +470,10 @@ export async function stopScreenShare(): Promise<void> {
   } catch (err) {
     console.error('No se pudo sincronizar el fin de la pantalla compartida', err)
   }
+}
+
+export async function toggleForceMuteParticipant(usuarioObjetivoId: string, silenciado: boolean): Promise<void> {
+  await forzarSilencioVoz(usuarioObjetivoId, silenciado)
 }
 
 export function useVoiceConnection(): VoiceConnectionState {

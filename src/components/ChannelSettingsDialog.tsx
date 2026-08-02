@@ -213,7 +213,7 @@ function ChannelSettingsForm({
       )}
 
       {tab === 'permisos' && (
-        <CanalPermisosEditor servidorId={servidorId} canalId={channel.id} />
+        <CanalPermisosEditor servidorId={servidorId} canalId={channel.id} canalTipo={channel.type} />
       )}
     </>
   )
@@ -222,9 +222,11 @@ function ChannelSettingsForm({
 function CanalPermisosEditor({
   servidorId,
   canalId,
+  canalTipo,
 }: {
   servidorId: string
   canalId: string
+  canalTipo: ChannelType
 }) {
   const [roles, setRoles] = useState<ServerRole[]>([])
   const [permisos, setPermisos] = useState<ChannelRolePermisos[]>([])
@@ -326,9 +328,8 @@ function CanalPermisosEditor({
 
       <div className="flex flex-col gap-3">
         <p className="text-xs text-muted-foreground/70">
-          Estos permisos se guardan pero todavía no bloquean ni habilitan
-          nada en la app — son la base para cuando se construya la
-          verificación de permisos por canal.
+          Sin una excepción explícita acá, un rol hereda el comportamiento por
+          defecto (permitido) en este canal.
         </p>
 
         {actionError && (
@@ -338,7 +339,9 @@ function CanalPermisosEditor({
         )}
 
         <div className="flex flex-col gap-2">
-          {PERMISOS_CANAL_CONOCIDOS.map((permiso) => (
+          {PERMISOS_CANAL_CONOCIDOS.filter(
+            (permiso) => permiso.enforced && permiso.tipos.includes(canalTipo)
+          ).map((permiso) => (
             <div key={permiso.key} className="flex items-center justify-between gap-3">
               <span className="text-sm text-muted-foreground">{permiso.label}</span>
               <Switch

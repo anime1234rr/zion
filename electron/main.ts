@@ -10,13 +10,22 @@ autoUpdater.autoDownload = false
 autoUpdater.autoInstallOnAppQuit = true
 log.transports.file.level = 'info'
 
+function decodeXmlEntities(text: string): string {
+  return text
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;|&apos;/g, "'")
+    .replace(/&amp;/g, '&')
+}
+
 function serializarUpdateInfo(info: UpdateInfo) {
   const notas = info.releaseNotes
   const releaseNotes =
     typeof notas === 'string'
-      ? notas
+      ? decodeXmlEntities(notas)
       : Array.isArray(notas)
-        ? notas.map((n) => `v${n.version}\n${n.note ?? ''}`).join('\n\n')
+        ? notas.map((n) => `<h3>v${n.version}</h3>${decodeXmlEntities(n.note ?? '')}`).join('')
         : ''
 
   return {
@@ -26,12 +35,6 @@ function serializarUpdateInfo(info: UpdateInfo) {
   }
 }
 
-// En Windows, el backend de captura de cámara "Media Foundation" que
-// Chromium usa por defecto crea una superficie nativa propia para el
-// pipeline de video que Windows termina mostrando como un ícono
-// aparte en la barra de tareas al prender la cámara. Forzar el
-// backend DirectShow (más viejo, pero sin esa superficie separada)
-// evita ese ícono fantasma sin afectar la calidad ni los permisos.
 app.commandLine.appendSwitch('disable-features', 'MediaFoundationVideoCapture')
 
 process.on('uncaughtException', (err) => {
@@ -60,7 +63,6 @@ let allowClose = false
 let quitAndInstallPending = false
 let pendingScreenSourceId: string | null = null
 let pendingScreenAudio = false
-//MODIFICADO
 function createWindow() {
   win = new BrowserWindow({
     width: 1280,
@@ -145,12 +147,8 @@ if (!gotLock) {
   })
 
   ipcMain.on('zion:open-external', (_event, url: string) => {
-    try {
-      if (new URL(url).protocol === 'https:') {
-        shell.openExternal(url)
-      }
-    } catch {
-      // URL inválida, no hacemos nada
+    if (URL.canParse(url) && new URL(url).protocol === 'https:') {
+      shell.openExternal(url)
     }
   })
 
@@ -204,22 +202,10 @@ if (!gotLock) {
   app.whenReady().then(() => {
     log.info('App lista, version', app.getVersion())
 
-    // El chat de voz necesita getUserMedia(audio) — sin este handler,
-    // Electron deniega cualquier pedido de permiso de medios por
-    // defecto y el micrófono falla en silencio. Solo se aprueba
-    // 'media' (audio/video); todo lo demás queda denegado.
     session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
       callback(permission === 'media')
     })
 
-    // getDisplayMedia() no funciona en Electron sin esto — a diferencia
-    // de un navegador normal, acá no hay picker nativo del SO por
-    // defecto. El renderer arma su propio selector con la lista que le
-    // pasamos por zion:list-screen-sources, y cuando el usuario elige
-    // una, zion:select-screen-source guarda el id acá para que este
-    // handler lo use en el próximo getDisplayMedia(). useSystemPicker
-    // en false para que nunca aparezca un picker nativo por encima del
-    // nuestro.
     session.defaultSession.setDisplayMediaRequestHandler(
       (_request, callback) => {
         if (!pendingScreenSourceId) {

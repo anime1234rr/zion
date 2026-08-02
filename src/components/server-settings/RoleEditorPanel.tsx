@@ -4,29 +4,18 @@ import { Check, Plus, X } from 'lucide-react'
 import {
   CATEGORIAS_PERMISOS,
   PERMISOS_CONOCIDOS,
+  ROLE_PRESETS,
   actualizarRol,
   crearRol,
   eliminarRol,
   type ServerRole,
 } from '@/lib/members'
 import { cn, getErrorMessage } from '@/lib/utils'
+import { COLORES } from '@/lib/role-colors'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
-
-const COLORES = [
-  '#6366f1',
-  '#ef4444',
-  '#f97316',
-  '#eab308',
-  '#22c55e',
-  '#06b6d4',
-  '#3b82f6',
-  '#a855f7',
-  '#ec4899',
-  '#9ca3af',
-]
 
 interface RoleEditorPanelProps {
   servidorId: string
@@ -133,6 +122,35 @@ function RoleEditorPanelInner({
         </button>
       </div>
 
+      {!role && (
+        <div className="mt-5 flex flex-col gap-1.5">
+          <Label className="text-xs text-muted-foreground uppercase">
+            Empezar desde una plantilla (opcional)
+          </Label>
+          <div className="flex flex-wrap gap-2">
+            {ROLE_PRESETS.map((preset) => (
+              <button
+                key={preset.id}
+                type="button"
+                onClick={() => {
+                  setNombre(preset.nombre)
+                  setColor(preset.color)
+                  setPermisos(preset.permisos)
+                }}
+                disabled={!canEdit}
+                className="flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs font-medium text-foreground outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-40"
+              >
+                <span
+                  className="size-2 shrink-0 rounded-full"
+                  style={{ backgroundColor: preset.color }}
+                />
+                {preset.nombre}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="mt-5 flex flex-col gap-1.5">
         <Label htmlFor="nombre_rol" className="text-xs text-muted-foreground uppercase">
           Identidad
@@ -194,45 +212,43 @@ function RoleEditorPanelInner({
         <Label className="text-xs text-muted-foreground uppercase">
           Permisos
         </Label>
-        {CATEGORIAS_PERMISOS.map((categoria) => (
-          <div
-            key={categoria.id}
-            className="rounded-lg border border-border p-3"
-          >
-            <p className="flex items-center gap-1.5 text-sm font-medium text-foreground">
-              <span aria-hidden>{categoria.icon}</span>
-              {categoria.label}
-            </p>
-            <div className="mt-2.5 flex flex-col gap-2.5">
-              {PERMISOS_CONOCIDOS.filter(
-                (p) => p.categoria === categoria.id
-              ).map((permiso) => (
-                <div
-                  key={permiso.key}
-                  className="flex items-center justify-between gap-3"
-                >
-                  <span className="flex flex-col">
+        {CATEGORIAS_PERMISOS.map((categoria) => {
+          const permisosDeCategoria = PERMISOS_CONOCIDOS.filter(
+            (p) => p.categoria === categoria.id && p.enforced
+          )
+          if (permisosDeCategoria.length === 0) return null
+
+          return (
+            <div
+              key={categoria.id}
+              className="rounded-lg border border-border p-3"
+            >
+              <p className="flex items-center gap-1.5 text-sm font-medium text-foreground">
+                <span aria-hidden>{categoria.icon}</span>
+                {categoria.label}
+              </p>
+              <div className="mt-2.5 flex flex-col gap-2.5">
+                {permisosDeCategoria.map((permiso) => (
+                  <div
+                    key={permiso.key}
+                    className="flex items-center justify-between gap-3"
+                  >
                     <span className="text-sm text-muted-foreground">
                       {permiso.label}
                     </span>
-                    {!permiso.enforced && (
-                      <span className="text-[11px] text-muted-foreground/60">
-                        Se guarda, pero todavía no se aplica en la app.
-                      </span>
-                    )}
-                  </span>
-                  <Switch
-                    checked={Boolean(permisos[permiso.key])}
-                    onCheckedChange={(checked) =>
-                      togglePermiso(permiso.key, checked)
-                    }
-                    disabled={!canEdit}
-                  />
-                </div>
-              ))}
+                    <Switch
+                      checked={Boolean(permisos[permiso.key])}
+                      onCheckedChange={(checked) =>
+                        togglePermiso(permiso.key, checked)
+                      }
+                      disabled={!canEdit}
+                    />
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
-        ))}
+          )
+        })}
       </div>
 
       {error && (

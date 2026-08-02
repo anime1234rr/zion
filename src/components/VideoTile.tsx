@@ -9,14 +9,6 @@ interface VideoTileProps {
   className?: string
 }
 
-/**
- * En mesh no se puede parar la decodificación del lado receptor sin
- * renegociar (a diferencia de una SFU, que sí puede dejar de
- * reenviarte algo que no estás mirando). Lo que sí se puede — y vale
- * la pena — es pausar el elemento <video> cuando sale del viewport,
- * ahorrando composición/GPU aunque el audio/video siga llegando por
- * la conexión.
- */
 export function VideoTile({ stream, muted = false, mirrored = false, className }: VideoTileProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
 

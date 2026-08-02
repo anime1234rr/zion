@@ -1,8 +1,8 @@
 import { useRef, useState } from 'react'
-import { Check, Copy, ImagePlus } from 'lucide-react'
+import { Check, Copy, ImagePlus, RefreshCw } from 'lucide-react'
 
 import { useAuth } from '@/hooks/use-auth'
-import { actualizarServidor } from '@/lib/servers'
+import { actualizarServidor, regenerarInvitacion } from '@/lib/servers'
 import { subirIconoServidor } from '@/lib/storage'
 import { buildInviteLink } from '@/lib/deep-links'
 import { cn, getErrorMessage } from '@/lib/utils'
@@ -14,10 +14,11 @@ import { Label } from '@/components/ui/label'
 interface GeneralSectionProps {
   server: ServerItem
   canEdit: boolean
+  canManageInvites: boolean
   onUpdated: (server: ServerItem) => void
 }
 
-export function GeneralSection({ server, canEdit, onUpdated }: GeneralSectionProps) {
+export function GeneralSection({ server, canEdit, canManageInvites, onUpdated }: GeneralSectionProps) {
   const { user } = useAuth()
   const [nombre, setNombre] = useState(server.name)
   const [iconFile, setIconFile] = useState<File | null>(null)
@@ -26,6 +27,8 @@ export function GeneralSection({ server, canEdit, onUpdated }: GeneralSectionPro
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
   const [copiedLink, setCopiedLink] = useState(false)
+  const [regenerating, setRegenerating] = useState(false)
+  const [inviteError, setInviteError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   async function handleCopyInviteLink() {
@@ -33,6 +36,19 @@ export function GeneralSection({ server, canEdit, onUpdated }: GeneralSectionPro
     await navigator.clipboard.writeText(buildInviteLink(server.inviteCode))
     setCopiedLink(true)
     setTimeout(() => setCopiedLink(false), 1500)
+  }
+
+  async function handleRegenerateInvite() {
+    setRegenerating(true)
+    setInviteError(null)
+    try {
+      const servidor = await regenerarInvitacion(server.id)
+      onUpdated(servidor)
+    } catch (err) {
+      setInviteError(getErrorMessage(err))
+    } finally {
+      setRegenerating(false)
+    }
   }
 
   function handlePickIcon(event: React.ChangeEvent<HTMLInputElement>) {
@@ -142,7 +158,7 @@ export function GeneralSection({ server, canEdit, onUpdated }: GeneralSectionPro
         )}
       </form>
 
-      {server.inviteCode && (
+      {server.inviteCode && canManageInvites && (
         <div className="mt-8 w-full overflow-hidden border-t border-border pt-6">
           <Label>Enlace de invitación</Label>
           <div className="mt-1.5 flex w-full items-center justify-between gap-2 overflow-hidden rounded-lg border border-input bg-muted/40 p-2">
@@ -151,12 +167,28 @@ export function GeneralSection({ server, canEdit, onUpdated }: GeneralSectionPro
                 {buildInviteLink(server.inviteCode)}
               </code>
             </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleRegenerateInvite}
+              disabled={regenerating}
+              className="shrink-0"
+            >
+              <RefreshCw className={cn('size-4', regenerating && 'animate-spin')} />
+              <span className="ml-1.5 hidden sm:inline">Regenerar</span>
+            </Button>
             <Button type="button" size="sm" onClick={handleCopyInviteLink} className="shrink-0">
               {copiedLink ? <Check className="size-4" /> : <Copy className="size-4" />}
               <span className="ml-1.5 hidden sm:inline">{copiedLink ? 'Copiado' : 'Copiar'}</span>
               <span className="ml-1.5 sm:hidden">{copiedLink ? 'Cop.' : 'Copiar'}</span>
             </Button>
           </div>
+          {inviteError && (
+            <p className="mt-1.5 text-xs text-destructive" role="alert">
+              {inviteError}
+            </p>
+          )}
         </div>
       )}
     </div>

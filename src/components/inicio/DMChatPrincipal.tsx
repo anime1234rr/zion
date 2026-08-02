@@ -377,7 +377,9 @@ export function DMChatPrincipal({
   const [isDraggingFile, setIsDraggingFile] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const scrollBottomRef = useRef<HTMLDivElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
   const dragCounterRef = useRef(0)
+  const sendVoiceOnStopRef = useRef(false)
   const groups = groupMessages(messages)
 
   const pendingPreviewUrl = useMemo(
@@ -402,7 +404,10 @@ export function DMChatPrincipal({
     }
   }, [pendingVoicePreviewUrl])
 
-  const voiceRecorder = useVoiceMessageRecorder((blob) => setPendingVoiceBlob(blob))
+  const voiceRecorder = useVoiceMessageRecorder((blob) => {
+    setPendingVoiceBlob(blob)
+    textareaRef.current?.focus()
+  })
 
   useEffect(() => {
     if (highlightMessageId) return
@@ -456,6 +461,7 @@ export function DMChatPrincipal({
   }
 
   async function submitDraft() {
+    if (uploading) return
     if (!draft.trim() && !pendingFile && !pendingVoiceBlob) return
 
     let attachment: ChatAttachment | undefined
@@ -491,6 +497,13 @@ export function DMChatPrincipal({
     setPendingVoiceBlob(null)
   }
 
+  useEffect(() => {
+    if (!pendingVoiceBlob || !sendVoiceOnStopRef.current) return
+    sendVoiceOnStopRef.current = false
+    submitDraft()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingVoiceBlob])
+
   function handleSubmit(event: React.FormEvent) {
     event.preventDefault()
     submitDraft()
@@ -499,6 +512,11 @@ export function DMChatPrincipal({
   function handleKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault()
+      if (voiceRecorder.recording) {
+        sendVoiceOnStopRef.current = true
+        voiceRecorder.stop()
+        return
+      }
       submitDraft()
     }
   }
@@ -692,7 +710,7 @@ export function DMChatPrincipal({
               <button
                 type="button"
                 onClick={() => (voiceRecorder.recording ? voiceRecorder.stop() : voiceRecorder.start())}
-                disabled={Boolean(pendingFile)}
+                disabled={Boolean(pendingFile) || Boolean(pendingVoiceBlob)}
                 aria-pressed={voiceRecorder.recording}
                 aria-label={voiceRecorder.recording ? 'Detener grabación' : 'Grabar mensaje de voz'}
                 className={cn(
@@ -709,6 +727,7 @@ export function DMChatPrincipal({
           </Tooltip>
 
           <Textarea
+            ref={textareaRef}
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
             onKeyDown={handleKeyDown}

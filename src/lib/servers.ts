@@ -195,6 +195,17 @@ export async function unirseAServidor(codigoInvitacion: string): Promise<ServerI
   return mapServidorToServerItem(data)
 }
 
+export async function regenerarInvitacion(servidorId: string): Promise<ServerItem> {
+  const { data, error } = await supabase
+    .rpc('regenerar_invitacion', { p_servidor_id: servidorId })
+    .single<ServidorRow>()
+
+  if (error) throw error
+  if (!data) throw new Error('No se pudo regenerar la invitación.')
+
+  return mapServidorToServerItem(data)
+}
+
 export async function transferirTitularidad(
   servidorId: string,
   nuevoPropietarioId: string

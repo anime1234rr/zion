@@ -4,6 +4,7 @@ import { Check, Crown, MessageSquare, UserPlus } from 'lucide-react'
 import { enviarSolicitudAmistad } from '@/lib/friends'
 import { obtenerMembresiaDeUsuario, type ServerRole } from '@/lib/members'
 import { obtenerPerfilPublico, type PublicProfile } from '@/lib/profiles'
+import { parseBioRichText } from '@/lib/bio-format'
 import { getErrorMessage } from '@/lib/utils'
 import type { ServerItem, UserStatus } from '@/lib/types'
 import {
@@ -109,7 +110,7 @@ export function UserProfileCard({
     <>
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>{children}</PopoverTrigger>
-        <PopoverContent side="right" align="start" className="p-0">
+        <PopoverContent side="right" align="start" className="bg-black p-0">
           {loading && (
             <p className="p-4 text-sm text-muted-foreground">Cargando…</p>
           )}
@@ -120,13 +121,19 @@ export function UserProfileCard({
           )}
 
           {!loading && !error && profile && (
-            <>
+            <div className="relative">
               <div
-                className="h-16"
-                style={{ backgroundColor: profile.colorBanner }}
+                className="absolute inset-0 bg-cover bg-center"
+                style={
+                  profile.bannerUrl
+                    ? { backgroundImage: `url(${profile.bannerUrl})`, backgroundColor: profile.colorBanner }
+                    : { backgroundColor: profile.colorBanner }
+                }
               />
-              <div className="px-4 pb-4">
-                <Avatar className="-mt-8 size-16 ring-4 ring-popover">
+              <div className="absolute inset-0 bg-black/80" />
+
+              <div className="relative z-10 px-4 pt-4 pb-4">
+                <Avatar className="size-16 ring-4 ring-black">
                   {profile.avatarUrl && <AvatarImage src={profile.avatarUrl} />}
                   <AvatarFallback className="text-lg">
                     {(profile.nombreCompleto || profile.nombreUsuario)
@@ -171,7 +178,7 @@ export function UserProfileCard({
                       Acerca de mí
                     </p>
                     <p className="mt-1 text-sm break-words whitespace-pre-wrap text-foreground/90">
-                      {profile.biografia}
+                      {parseBioRichText(profile.biografia)}
                     </p>
                   </div>
                 )}
@@ -249,7 +256,7 @@ export function UserProfileCard({
                   )}
                 </div>
               </div>
-            </>
+            </div>
           )}
         </PopoverContent>
       </Popover>

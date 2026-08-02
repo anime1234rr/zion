@@ -48,7 +48,6 @@ function mapEstadoVoz(row: EstadoVozRow): VoiceParticipant {
   }
 }
 
-/** Descarta filas cuyo heartbeat quedó viejo (cierre abrupto sin salir_de_voz). */
 function esConexionViva(actualizadoAt: string): boolean {
   return Date.now() - new Date(actualizadoAt).getTime() < STALE_MS
 }
@@ -84,6 +83,14 @@ export async function actualizarEstadoVoz(cambios: {
   if (error) throw error
 }
 
+export async function forzarSilencioVoz(usuarioObjetivoId: string, silenciado: boolean): Promise<void> {
+  const { error } = await supabase.rpc('forzar_silencio_voz', {
+    p_usuario_objetivo_id: usuarioObjetivoId,
+    p_silenciado: silenciado,
+  })
+  if (error) throw error
+}
+
 export function iniciarHeartbeatVoz(): () => void {
   const interval = setInterval(() => {
     supabase.rpc('tocar_presencia_voz').then(({ error }) => {
@@ -105,7 +112,6 @@ export async function listarParticipantesDeVoz(canalId: string): Promise<VoicePa
   return (data ?? []).map(mapEstadoVoz).filter((p) => esConexionViva(p.updatedAt))
 }
 
-/** Roster de varios canales de voz a la vez (ej. todos los de un servidor para la barra lateral). */
 export async function listarParticipantesDeVozDeCanales(canalIds: string[]): Promise<VoiceParticipant[]> {
   if (canalIds.length === 0) return []
 
@@ -119,7 +125,6 @@ export async function listarParticipantesDeVozDeCanales(canalIds: string[]): Pro
   return (data ?? []).map(mapEstadoVoz).filter((p) => esConexionViva(p.updatedAt))
 }
 
-/** Roster de voz de un servidor entero (para el panel general de miembros, que solo tiene el servidor_id). */
 export async function listarParticipantesDeVozDelServidor(servidorId: string): Promise<VoiceParticipant[]> {
   const { data, error } = await supabase
     .rpc('listar_participantes_de_voz_del_servidor', { p_servidor_id: servidorId })
@@ -148,7 +153,6 @@ export function suscribirseAEstadosVoz(canalId: string, { onCambio }: Suscribirs
   }
 }
 
-/** Sin filtro por canal — estados_voz no tiene servidor_id, así que no se puede acotar server-side. RLS igual restringe qué filas llegan. */
 export function suscribirseAEstadosVozGlobal(onCambio: () => void) {
   const channel = supabase
     .channel(`estados-voz-global-${crypto.randomUUID()}`)

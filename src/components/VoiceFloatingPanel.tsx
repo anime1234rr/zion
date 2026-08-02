@@ -1,4 +1,5 @@
-import { Headphones, HeadphoneOff, LogOut, Maximize2, Mic, MicOff } from 'lucide-react'
+import { useRef, useState } from 'react'
+import { GripHorizontal, Headphones, HeadphoneOff, LogOut, Maximize2, Mic, MicOff } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
 import {
@@ -24,14 +25,6 @@ interface VoiceFloatingPanelProps {
   onReturnToChannel: (serverId: string, channelId: string) => void
 }
 
-/**
- * La conexión de voz (WebRTC, streams) vive en el store singleton de
- * use-voice-connection.ts, no en VoiceChannelView — por eso ya
- * sobrevive a la navegación sin cortarse. Lo único que faltaba era una
- * UI que la siga mostrando cuando VoiceChannelView se desmonta. Este
- * panel se monta una sola vez en App.tsx y decide solo si tiene algo
- * para mostrar.
- */
 export function VoiceFloatingPanel({ currentUserId, hidden, onReturnToChannel }: VoiceFloatingPanelProps) {
   const {
     connectedChannelId,
@@ -45,6 +38,35 @@ export function VoiceFloatingPanel({ currentUserId, hidden, onReturnToChannel }:
     remoteStreams,
     speakingUserIds,
   } = useVoiceConnection()
+
+  const panelRef = useRef<HTMLDivElement>(null)
+  const dragOffset = useRef<{ x: number; y: number } | null>(null)
+  const [position, setPosition] = useState<{ x: number; y: number } | null>(null)
+
+  function handleDragPointerDown(event: React.PointerEvent<HTMLDivElement>) {
+    const el = panelRef.current
+    if (!el) return
+    const rect = el.getBoundingClientRect()
+    dragOffset.current = { x: event.clientX - rect.left, y: event.clientY - rect.top }
+    el.setPointerCapture(event.pointerId)
+  }
+
+  function handleDragPointerMove(event: React.PointerEvent<HTMLDivElement>) {
+    if (!dragOffset.current) return
+    const el = panelRef.current
+    if (!el) return
+    const maxX = Math.max(0, window.innerWidth - el.offsetWidth)
+    const maxY = Math.max(0, window.innerHeight - el.offsetHeight)
+    setPosition({
+      x: Math.min(Math.max(0, event.clientX - dragOffset.current.x), maxX),
+      y: Math.min(Math.max(0, event.clientY - dragOffset.current.y), maxY),
+    })
+  }
+
+  function handleDragPointerUp(event: React.PointerEvent<HTMLDivElement>) {
+    dragOffset.current = null
+    panelRef.current?.releasePointerCapture(event.pointerId)
+  }
 
   if (!connectedChannelId || !connectedServerId || hidden) return null
 
@@ -66,7 +88,22 @@ export function VoiceFloatingPanel({ currentUserId, hidden, onReturnToChannel }:
   }
 
   return (
-    <div className="fixed right-4 bottom-4 z-40 w-56 overflow-hidden rounded-xl border border-border bg-popover shadow-xl sm:w-64">
+    <div
+      ref={panelRef}
+      className={cn(
+        'fixed z-40 w-56 overflow-hidden rounded-xl border border-border bg-popover shadow-xl sm:w-64',
+        position ? 'right-auto bottom-auto' : 'right-4 bottom-4'
+      )}
+      style={position ? { left: position.x, top: position.y } : undefined}
+    >
+      <div
+        onPointerDown={handleDragPointerDown}
+        onPointerMove={handleDragPointerMove}
+        onPointerUp={handleDragPointerUp}
+        className="flex cursor-grab items-center justify-center border-b border-border bg-muted/40 py-1 touch-none active:cursor-grabbing"
+      >
+        <GripHorizontal className="size-3.5 text-muted-foreground" />
+      </div>
       {focusTile ? (
         <button
           type="button"

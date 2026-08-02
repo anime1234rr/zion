@@ -151,6 +151,15 @@ export async function eliminarMensaje(mensajeId: string): Promise<void> {
   if (error) throw error
 }
 
+export async function limpiarMensajesRapido(canalId: string, cantidad: number): Promise<number> {
+  const { data, error } = await supabase.rpc('slash_limpiar_mensajes', {
+    p_canal_id: canalId,
+    p_cantidad: cantidad,
+  })
+  if (error) throw error
+  return data as number
+}
+
 export async function fijarMensaje(mensajeId: string): Promise<void> {
   const { error } = await supabase.rpc('fijar_mensaje', { p_mensaje_id: mensajeId })
   if (error) throw error

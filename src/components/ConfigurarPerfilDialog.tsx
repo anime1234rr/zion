@@ -1,13 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
-import { Check, ChevronDown, ImagePlus, Plus } from 'lucide-react'
+import { Bold, Check, ChevronDown, ImagePlus, Italic, Palette, Plus } from 'lucide-react'
 
 import {
   actualizarAvatar,
+  actualizarBanner,
   actualizarPerfil,
   obtenerPerfilEditable,
   type EditableProfile,
 } from '@/lib/profiles'
-import { subirAvatar } from '@/lib/storage'
+import { subirAvatar, subirBanner } from '@/lib/storage'
+import { parseBioRichText } from '@/lib/bio-format'
 import { cn, getErrorMessage } from '@/lib/utils'
 import type { ChatUser, UserStatus } from '@/lib/types'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
@@ -64,7 +66,7 @@ export function ConfigurarPerfilDialog({
 }: ConfigurarPerfilDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="overflow-hidden bg-black p-0 sm:max-w-lg">
         {open && (
           <ConfigurarPerfilForm
             key={userId}
@@ -94,11 +96,17 @@ function ConfigurarPerfilForm({
   const [colorBanner, setColorBanner] = useState('#6366f1')
   const [avatarFile, setAvatarFile] = useState<File | null>(null)
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
+  const [bannerFile, setBannerFile] = useState<File | null>(null)
+  const [bannerPreview, setBannerPreview] = useState<string | null>(null)
+  const [bannerRemoved, setBannerRemoved] = useState(false)
+  const [bioColorPickerOpen, setBioColorPickerOpen] = useState(false)
 
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const bannerInputRef = useRef<HTMLInputElement>(null)
+  const bioRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
     let cancelado = false
@@ -129,6 +137,41 @@ function ConfigurarPerfilForm({
     })
   }
 
+  function handlePickBanner(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+    setBannerFile(file)
+    setBannerRemoved(false)
+    setBannerPreview((prev) => {
+      if (prev) URL.revokeObjectURL(prev)
+      return URL.createObjectURL(file)
+    })
+  }
+
+  function handleRemoveBanner() {
+    setBannerFile(null)
+    setBannerPreview((prev) => {
+      if (prev) URL.revokeObjectURL(prev)
+      return null
+    })
+    setBannerRemoved(true)
+  }
+
+  function wrapBioSelection(before: string, after: string = before) {
+    const el = bioRef.current
+    if (!el) return
+    const start = el.selectionStart
+    const end = el.selectionEnd
+    const selected = biografia.slice(start, end) || 'texto'
+    const next = `${biografia.slice(0, start)}${before}${selected}${after}${biografia.slice(end)}`
+    setBiografia(next)
+    requestAnimationFrame(() => {
+      el.focus()
+      el.setSelectionRange(start + before.length, start + before.length + selected.length)
+    })
+  }
+
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault()
     if (!perfil || !nombreUsuario.trim()) return
@@ -143,6 +186,15 @@ function ConfigurarPerfilForm({
         await actualizarAvatar(userId, avatarUrl)
       }
 
+      let bannerUrl = perfil.bannerUrl
+      if (bannerFile) {
+        bannerUrl = await subirBanner(userId, bannerFile)
+        await actualizarBanner(userId, bannerUrl)
+      } else if (bannerRemoved) {
+        bannerUrl = undefined
+        await actualizarBanner(userId, null)
+      }
+
       const actualizado = await actualizarPerfil(userId, {
         nombreUsuario,
         nombreCompleto,
@@ -151,8 +203,10 @@ function ConfigurarPerfilForm({
         colorBanner,
       })
 
-      setPerfil({ ...actualizado, avatarUrl })
+      setPerfil({ ...actualizado, avatarUrl, bannerUrl })
       setAvatarFile(null)
+      setBannerFile(null)
+      setBannerRemoved(false)
       onProfileUpdated({
         id: userId,
         name: nombreCompleto.trim() || nombreUsuario.trim(),
@@ -185,13 +239,27 @@ function ConfigurarPerfilForm({
     biografia.trim() !== perfil.biografia ||
     status !== perfil.status ||
     colorBanner !== perfil.colorBanner ||
-    avatarFile !== null
+    avatarFile !== null ||
+    bannerFile !== null ||
+    bannerRemoved
 
   const previewSrc = avatarPreview ?? perfil.avatarUrl
+  const bannerSrc = bannerRemoved ? null : (bannerPreview ?? perfil.bannerUrl)
   const estadoActual = estados.find((e) => e.value === status) ?? estados[0]
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-5">
+    <form onSubmit={handleSubmit} className="relative flex flex-col">
+      <div
+        className="absolute inset-0 bg-cover bg-center"
+        style={
+          bannerSrc
+            ? { backgroundImage: `url(${bannerSrc})`, backgroundColor: colorBanner }
+            : { backgroundColor: colorBanner }
+        }
+      />
+      <div className="absolute inset-0 bg-black/80" />
+
+      <div className="relative z-10 flex flex-col gap-5 p-6">
       <DialogHeader>
         <DialogTitle>Configurar perfil</DialogTitle>
         <DialogDescription>
@@ -200,51 +268,80 @@ function ConfigurarPerfilForm({
         </DialogDescription>
       </DialogHeader>
 
-      <div className="flex items-center gap-4">
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*"
-          className="hidden"
-          onChange={handlePickAvatar}
-        />
-        <button
-          type="button"
-          onClick={() => fileInputRef.current?.click()}
-          className="relative shrink-0 rounded-full outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-        >
-          <Avatar className="size-16">
-            {previewSrc && <AvatarImage src={previewSrc} />}
-            <AvatarFallback>
-              {(nombreCompleto || nombreUsuario).slice(0, 2).toUpperCase()}
-            </AvatarFallback>
-          </Avatar>
-          <span className="absolute inset-0 flex items-center justify-center rounded-full bg-black/50 text-white opacity-0 transition-opacity hover:opacity-100">
-            <ImagePlus className="size-5" />
-          </span>
-        </button>
-        <div className="flex flex-col gap-1.5">
-          <Label>Estado</Label>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button
-                type="button"
-                className="flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-xs font-medium text-foreground outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50"
-              >
-                <span className={cn('size-2 rounded-full', estadoActual.dot)} />
-                {estadoActual.label}
-                <ChevronDown className="size-3 text-muted-foreground" />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-40">
-              {estados.map(({ value, label, dot }) => (
-                <DropdownMenuItem key={value} onSelect={() => setStatus(value)}>
-                  <span className={cn('size-2 rounded-full', dot)} />
-                  {label}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-center gap-4">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={handlePickAvatar}
+          />
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="relative shrink-0 rounded-full outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+          >
+            <Avatar className="size-16 ring-4 ring-black">
+              {previewSrc && <AvatarImage src={previewSrc} />}
+              <AvatarFallback>
+                {(nombreCompleto || nombreUsuario).slice(0, 2).toUpperCase()}
+              </AvatarFallback>
+            </Avatar>
+            <span className="absolute inset-0 flex items-center justify-center rounded-full bg-black/50 text-white opacity-0 transition-opacity hover:opacity-100">
+              <ImagePlus className="size-5" />
+            </span>
+          </button>
+          <div className="flex flex-col gap-1.5">
+            <Label>Estado</Label>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  className="flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-xs font-medium text-foreground outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50"
+                >
+                  <span className={cn('size-2 rounded-full', estadoActual.dot)} />
+                  {estadoActual.label}
+                  <ChevronDown className="size-3 text-muted-foreground" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-40">
+                {estados.map(({ value, label, dot }) => (
+                  <DropdownMenuItem key={value} onSelect={() => setStatus(value)}>
+                    <span className={cn('size-2 rounded-full', dot)} />
+                    {label}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        </div>
+
+        <div className="flex shrink-0 flex-col items-end gap-1">
+          <input
+            ref={bannerInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={handlePickBanner}
+          />
+          <button
+            type="button"
+            onClick={() => bannerInputRef.current?.click()}
+            className="flex items-center gap-1.5 rounded-md bg-black/40 px-2.5 py-1.5 text-xs font-medium text-white outline-none backdrop-blur-sm hover:bg-black/60 focus-visible:ring-2 focus-visible:ring-ring/50"
+          >
+            <ImagePlus className="size-3.5" />
+            Cambiar banner
+          </button>
+          {bannerSrc && (
+            <button
+              type="button"
+              onClick={handleRemoveBanner}
+              className="text-[11px] text-white/70 outline-none hover:text-destructive hover:underline"
+            >
+              Quitar banner
+            </button>
+          )}
         </div>
       </div>
 
@@ -270,20 +367,78 @@ function ConfigurarPerfilForm({
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor="perfil_biografia">Biografía</Label>
+        <div className="flex items-center justify-between">
+          <Label htmlFor="perfil_biografia">Biografía</Label>
+          <div className="flex items-center gap-0.5">
+            <button
+              type="button"
+              onClick={() => wrapBioSelection('**')}
+              aria-label="Negrita"
+              className="flex size-6 items-center justify-center rounded text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
+            >
+              <Bold className="size-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => wrapBioSelection('*')}
+              aria-label="Cursiva"
+              className="flex size-6 items-center justify-center rounded text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
+            >
+              <Italic className="size-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setBioColorPickerOpen((prev) => !prev)}
+              aria-label="Color de texto"
+              aria-pressed={bioColorPickerOpen}
+              className={cn(
+                'flex size-6 items-center justify-center rounded text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50',
+                bioColorPickerOpen && 'bg-muted text-foreground'
+              )}
+            >
+              <Palette className="size-3.5" />
+            </button>
+          </div>
+        </div>
+
+        {bioColorPickerOpen && (
+          <div className="flex flex-wrap items-center gap-1.5 rounded-md border border-border p-1.5">
+            {COLORES_BANNER.map((c) => (
+              <button
+                key={c}
+                type="button"
+                onClick={() => {
+                  wrapBioSelection(`[color=${c}]`, '[/color]')
+                  setBioColorPickerOpen(false)
+                }}
+                aria-label={c}
+                className="size-5 shrink-0 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                style={{ backgroundColor: c }}
+              />
+            ))}
+          </div>
+        )}
+
         <Textarea
+          ref={bioRef}
           id="perfil_biografia"
           value={biografia}
           onChange={(event) => setBiografia(event.target.value)}
-          placeholder="Contá algo sobre vos…"
+          placeholder="Contá algo sobre vos… seleccioná texto y usá los botones de arriba para darle formato"
           maxLength={280}
         />
+
+        {biografia && (
+          <div className="rounded-md border border-border bg-muted/30 px-2.5 py-2 text-sm break-words whitespace-pre-wrap text-foreground/90">
+            {parseBioRichText(biografia)}
+          </div>
+        )}
       </div>
 
       <div className="flex flex-col gap-1.5">
         <Label>Color de banner</Label>
         <p className="text-xs text-muted-foreground">
-          Se ve en la cabecera de tu tarjeta de perfil.
+          Fondo de tu tarjeta de perfil. Si subís una imagen o GIF, este color queda detrás (útil para GIFs con transparencia).
         </p>
         <div className="flex flex-wrap items-center gap-2">
           {COLORES_BANNER.map((c) => (
@@ -327,11 +482,12 @@ function ConfigurarPerfilForm({
         </p>
       )}
 
-      <div className="flex items-center gap-3 border-t border-border pt-4">
+      <div className="flex items-center gap-3 border-t border-white/10 pt-4">
         <Button type="submit" disabled={loading || !nombreUsuario.trim() || !dirty}>
           {loading ? 'Guardando…' : 'Guardar cambios'}
         </Button>
         {saved && <span className="text-sm text-muted-foreground">Guardado ✓</span>}
+      </div>
       </div>
     </form>
   )

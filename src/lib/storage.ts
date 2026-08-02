@@ -1,22 +1,24 @@
 import { supabase } from '@/lib/supabase'
 
 const MAX_SIZE_BYTES = 5 * 1024 * 1024
+const BANNER_MAX_SIZE_BYTES = 10 * 1024 * 1024
 
-function assertImagenValida(file: File) {
+function assertImagenValida(file: File, maxBytes: number) {
   if (!file.type.startsWith('image/')) {
     throw new Error('El archivo debe ser una imagen.')
   }
-  if (file.size > MAX_SIZE_BYTES) {
-    throw new Error('La imagen no puede pesar más de 5 MB.')
+  if (file.size > maxBytes) {
+    throw new Error(`La imagen no puede pesar más de ${Math.round(maxBytes / (1024 * 1024))} MB.`)
   }
 }
 
 async function subirImagen(
-  bucket: 'avatars' | 'iconos_servidores',
+  bucket: 'avatars' | 'iconos_servidores' | 'user-banners',
   ownerId: string,
-  file: File
+  file: File,
+  maxBytes: number = MAX_SIZE_BYTES
 ): Promise<string> {
-  assertImagenValida(file)
+  assertImagenValida(file, maxBytes)
 
   const extension = file.name.split('.').pop() ?? 'png'
   const path = `${ownerId}/${crypto.randomUUID()}.${extension}`
@@ -24,6 +26,7 @@ async function subirImagen(
   const { error } = await supabase.storage.from(bucket).upload(path, file, {
     cacheControl: '3600',
     upsert: false,
+    contentType: file.type,
   })
   if (error) throw error
 
@@ -36,6 +39,10 @@ export function subirAvatar(userId: string, file: File) {
 
 export function subirIconoServidor(userId: string, file: File) {
   return subirImagen('iconos_servidores', userId, file)
+}
+
+export function subirBanner(userId: string, file: File) {
+  return subirImagen('user-banners', userId, file, BANNER_MAX_SIZE_BYTES)
 }
 
 const CHAT_MAX_SIZE_BYTES = 50 * 1024 * 1024
@@ -84,17 +91,26 @@ export async function subirArchivoChat(
 
 const VOZ_MAX_SIZE_BYTES = 15 * 1024 * 1024
 
+const AUDIO_EXTENSION_POR_MIME_BASE: Record<string, string> = {
+  'audio/webm': 'webm',
+  'audio/ogg': 'ogg',
+  'audio/mp4': 'mp4',
+  'audio/mpeg': 'mp3',
+}
+
 export async function subirNotaDeVoz(canalId: string, blob: Blob): Promise<{ url: string; tipo: 'audio' }> {
   if (blob.size > VOZ_MAX_SIZE_BYTES) {
     throw new Error('El mensaje de voz no puede pesar más de 15 MB.')
   }
 
-  const path = `chat/${canalId}/${crypto.randomUUID()}.webm`
+  const mimeBase = (blob.type || 'audio/webm').split(';')[0].trim()
+  const extension = AUDIO_EXTENSION_POR_MIME_BASE[mimeBase] ?? 'webm'
+  const path = `chat/${canalId}/${crypto.randomUUID()}.${extension}`
 
   const { error } = await supabase.storage.from('archivos-chat').upload(path, blob, {
     cacheControl: '3600',
     upsert: false,
-    contentType: blob.type || 'audio/webm',
+    contentType: mimeBase,
   })
   if (error) throw error
 
