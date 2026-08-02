@@ -130,15 +130,23 @@ export function SearchDialog({
           { type: scope, canalId: channel.id },
           { query: freeText, autorId: authorFilter?.id ?? null, adjuntoTipo: adjuntoFilter }
         )
-          .then((results) => !cancelado && setMessageResults(results))
-          .catch((err) => !cancelado && setError(getErrorMessage(err))),
+          .then((results) => {
+            if (!cancelado) setMessageResults(results)
+          })
+          .catch((err) => {
+            if (!cancelado) setError(getErrorMessage(err))
+          }),
       ]
 
       if (freeText) {
         tasks.push(
           buscarUsuariosEnServidor(server.id, freeText)
-            .then((results) => !cancelado && setUserResults(results))
-            .catch(() => !cancelado && setUserResults([]))
+            .then((results) => {
+              if (!cancelado) setUserResults(results)
+            })
+            .catch(() => {
+              if (!cancelado) setUserResults([])
+            })
         )
       }
 

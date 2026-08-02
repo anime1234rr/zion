@@ -77,19 +77,17 @@ export async function buscarMensajes(
   const termino = filtros.query.trim()
   if (!termino && !filtros.autorId && !filtros.adjuntoTipo) return []
 
-  const { data, error } = await supabase
-    .rpc('buscar_mensajes', {
-      p_servidor_id: servidorId,
-      p_query: termino || null,
-      p_canal_id: scope.type === 'channel' ? scope.canalId : null,
-      p_autor_id: filtros.autorId ?? null,
-      p_adjunto_tipo: filtros.adjuntoTipo ? attachmentTypeToAdjuntoTipo[filtros.adjuntoTipo] : null,
-      p_limite: 30,
-    })
-    .returns<BuscarMensajesRow[]>()
+  const { data, error } = await supabase.rpc('buscar_mensajes', {
+    p_servidor_id: servidorId,
+    p_query: termino || null,
+    p_canal_id: scope.type === 'channel' ? scope.canalId : null,
+    p_autor_id: filtros.autorId ?? null,
+    p_adjunto_tipo: filtros.adjuntoTipo ? attachmentTypeToAdjuntoTipo[filtros.adjuntoTipo] : null,
+    p_limite: 30,
+  })
 
   if (error) throw error
-  return (data ?? []).map(mapMensajeResultado)
+  return ((data ?? []) as BuscarMensajesRow[]).map(mapMensajeResultado)
 }
 
 export async function buscarUsuariosEnServidor(
@@ -99,10 +97,12 @@ export async function buscarUsuariosEnServidor(
   const query = termino.trim()
   if (!query) return []
 
-  const { data, error } = await supabase
-    .rpc('buscar_usuarios_servidor', { p_servidor_id: servidorId, p_query: query, p_limite: 8 })
-    .returns<PerfilRow[]>()
+  const { data, error } = await supabase.rpc('buscar_usuarios_servidor', {
+    p_servidor_id: servidorId,
+    p_query: query,
+    p_limite: 8,
+  })
 
   if (error) throw error
-  return (data ?? []).map(mapPerfilToChatUser)
+  return ((data ?? []) as PerfilRow[]).map(mapPerfilToChatUser)
 }

@@ -68,16 +68,14 @@ export async function listarRegistroAuditoria(
   servidorId: string,
   antesDe?: string
 ): Promise<AuditLogEntry[]> {
-  const { data, error } = await supabase
-    .rpc('listar_registro_auditoria', {
-      p_servidor_id: servidorId,
-      p_limite: 50,
-      p_antes_de: antesDe ?? null,
-    })
-    .returns<RegistroAuditoriaRow[]>()
+  const { data, error } = await supabase.rpc('listar_registro_auditoria', {
+    p_servidor_id: servidorId,
+    p_limite: 50,
+    p_antes_de: antesDe ?? null,
+  })
 
   if (error) throw error
-  return (data ?? []).map((row) => ({
+  return ((data ?? []) as RegistroAuditoriaRow[]).map((row) => ({
     id: row.id,
     actor: mapActor(row),
     objetivo: mapObjetivo(row),
