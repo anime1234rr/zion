@@ -7,16 +7,28 @@ export interface ChatUser {
   avatarUrl?: string
   status: UserStatus
   statusText?: string
+  backgroundUrl?: string
+  backgroundType?: 'imagen' | 'video'
 }
+
+export type ServerVerificationLevel = 'ninguno' | 'bajo' | 'medio' | 'alto'
+export type ServerHistoryRetention = '7d' | '30d' | '90d' | '1a' | 'para_siempre'
+export type ServerDefaultNotifications = 'todos' | 'menciones'
 
 export interface ServerItem {
   id: string
   name: string
   ownerId: string
   iconUrl?: string
+  bannerUrl?: string
   inviteCode?: string
   unread?: boolean
   mentionCount?: number
+  welcomeChannelId?: string
+  rulesChannelId?: string
+  verificationLevel: ServerVerificationLevel
+  historyRetention: ServerHistoryRetention
+  defaultNotifications: ServerDefaultNotifications
 }
 
 export type ChannelType = 'text' | 'voice' | 'code' | 'announcement'

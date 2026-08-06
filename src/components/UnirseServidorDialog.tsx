@@ -1,6 +1,7 @@
 import { useState } from 'react'
 
 import { unirseAServidor } from '@/lib/servers'
+import { parseZionLink } from '@/lib/deep-links'
 import { getErrorMessage } from '@/lib/utils'
 import type { ServerItem } from '@/lib/types'
 import { Button } from '@/components/ui/button'
@@ -52,12 +53,15 @@ function UnirseForm({
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault()
-    if (!codigo.trim()) return
+    const valor = codigo.trim()
+    if (!valor) return
 
     setLoading(true)
     setError(null)
     try {
-      const servidor = await unirseAServidor(codigo)
+      const link = parseZionLink(valor)
+      const codigoFinal = link?.type === 'invite' ? link.code : valor
+      const servidor = await unirseAServidor(codigoFinal)
       onJoined(servidor)
       onOpenChange(false)
     } catch (err) {
@@ -72,17 +76,17 @@ function UnirseForm({
       <DialogHeader>
         <DialogTitle>Unirme a un servidor</DialogTitle>
         <DialogDescription>
-          Pegá el código de invitación que te compartieron.
+          Pegá el código o el enlace de invitación que te compartieron.
         </DialogDescription>
       </DialogHeader>
 
       <div className="mt-4 flex flex-col gap-1.5">
-        <Label htmlFor="codigo_invitacion">Código de invitación</Label>
+        <Label htmlFor="codigo_invitacion">Código o enlace de invitación</Label>
         <Input
           id="codigo_invitacion"
           value={codigo}
           onChange={(event) => setCodigo(event.target.value)}
-          placeholder="08e52c09e4ca"
+          placeholder="zion://invitar/08e52c09e4ca o 08e52c09e4ca"
           autoFocus
           required
           className="font-mono"

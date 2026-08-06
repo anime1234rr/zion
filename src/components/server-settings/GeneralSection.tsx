@@ -1,15 +1,26 @@
 import { useRef, useState } from 'react'
-import { Check, Copy, ImagePlus, RefreshCw } from 'lucide-react'
+import { Check, ChevronDown, Copy, ImagePlus, RefreshCw } from 'lucide-react'
 
 import { useAuth } from '@/hooks/use-auth'
 import { actualizarServidor, regenerarInvitacion } from '@/lib/servers'
-import { subirIconoServidor } from '@/lib/storage'
+import { subirBannerServidor, subirIconoServidor } from '@/lib/storage'
 import { buildInviteLink } from '@/lib/deep-links'
 import { cn, getErrorMessage } from '@/lib/utils'
-import type { ServerItem } from '@/lib/types'
+import type { ServerDefaultNotifications, ServerItem } from '@/lib/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+
+const OPCIONES_NOTIFICACIONES: { value: ServerDefaultNotifications; label: string }[] = [
+  { value: 'todos', label: 'Todos los mensajes' },
+  { value: 'menciones', label: 'Solo menciones' },
+]
 
 interface GeneralSectionProps {
   server: ServerItem
@@ -23,13 +34,19 @@ export function GeneralSection({ server, canEdit, canManageInvites, onUpdated }:
   const [nombre, setNombre] = useState(server.name)
   const [iconFile, setIconFile] = useState<File | null>(null)
   const [iconPreview, setIconPreview] = useState<string | null>(null)
+  const [bannerFile, setBannerFile] = useState<File | null>(null)
+  const [bannerPreview, setBannerPreview] = useState<string | null>(null)
+  const [bannerRemoved, setBannerRemoved] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
   const [copiedLink, setCopiedLink] = useState(false)
   const [regenerating, setRegenerating] = useState(false)
   const [inviteError, setInviteError] = useState<string | null>(null)
+  const [savingNotif, setSavingNotif] = useState(false)
+  const [notifError, setNotifError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const bannerInputRef = useRef<HTMLInputElement>(null)
 
   async function handleCopyInviteLink() {
     if (!server.inviteCode) return
@@ -51,6 +68,20 @@ export function GeneralSection({ server, canEdit, canManageInvites, onUpdated }:
     }
   }
 
+  async function handleChangeDefaultNotifications(value: ServerDefaultNotifications) {
+    if (value === server.defaultNotifications) return
+    setSavingNotif(true)
+    setNotifError(null)
+    try {
+      const servidor = await actualizarServidor(server.id, { defaultNotifications: value })
+      onUpdated(servidor)
+    } catch (err) {
+      setNotifError(getErrorMessage(err))
+    } finally {
+      setSavingNotif(false)
+    }
+  }
+
   function handlePickIcon(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0]
     if (!file) return
@@ -59,6 +90,27 @@ export function GeneralSection({ server, canEdit, canManageInvites, onUpdated }:
       if (prev) URL.revokeObjectURL(prev)
       return URL.createObjectURL(file)
     })
+  }
+
+  function handlePickBanner(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+    setBannerFile(file)
+    setBannerRemoved(false)
+    setBannerPreview((prev) => {
+      if (prev) URL.revokeObjectURL(prev)
+      return URL.createObjectURL(file)
+    })
+  }
+
+  function handleRemoveBanner() {
+    setBannerFile(null)
+    setBannerPreview((prev) => {
+      if (prev) URL.revokeObjectURL(prev)
+      return null
+    })
+    setBannerRemoved(true)
   }
 
   async function handleSubmit(event: React.FormEvent) {
@@ -72,11 +124,22 @@ export function GeneralSection({ server, canEdit, canManageInvites, onUpdated }:
       const iconoUrl = iconFile
         ? await subirIconoServidor(user.id, iconFile)
         : undefined
+
+      let bannerUrl: string | null | undefined
+      if (bannerFile) {
+        bannerUrl = await subirBannerServidor(user.id, bannerFile)
+      } else if (bannerRemoved) {
+        bannerUrl = null
+      }
+
       const servidor = await actualizarServidor(server.id, {
         nombre,
         iconoUrl,
+        bannerUrl,
       })
       onUpdated(servidor)
+      setBannerFile(null)
+      setBannerRemoved(false)
       setSaved(true)
       setTimeout(() => setSaved(false), 2000)
     } catch (err) {
@@ -87,7 +150,9 @@ export function GeneralSection({ server, canEdit, canManageInvites, onUpdated }:
   }
 
   const previewSrc = iconPreview ?? server.iconUrl
-  const dirty = nombre.trim() !== server.name || iconFile !== null
+  const bannerSrc = bannerRemoved ? null : (bannerPreview ?? server.bannerUrl)
+  const dirty =
+    nombre.trim() !== server.name || iconFile !== null || bannerFile !== null || bannerRemoved
 
   return (
     <div className="max-w-xl">
@@ -97,6 +162,44 @@ export function GeneralSection({ server, canEdit, canManageInvites, onUpdated }:
       </p>
 
       <form onSubmit={handleSubmit} className="mt-6 flex flex-col gap-6">
+        <div className="flex flex-col gap-1.5">
+          <Label>Banner del servidor</Label>
+          <p className="text-xs text-muted-foreground">
+            Imagen de marquesina que se muestra arriba de la lista de canales.
+          </p>
+          <input
+            ref={bannerInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={handlePickBanner}
+          />
+          <button
+            type="button"
+            onClick={() => bannerInputRef.current?.click()}
+            disabled={!canEdit}
+            className="relative flex h-24 w-full items-center justify-center overflow-hidden rounded-xl border border-dashed border-border bg-muted/40 text-muted-foreground outline-none hover:border-solid hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-60"
+          >
+            {bannerSrc ? (
+              <img src={bannerSrc} alt="" className="size-full object-cover" />
+            ) : (
+              <span className="flex items-center gap-1.5 text-sm">
+                <ImagePlus className="size-4" />
+                Subir banner
+              </span>
+            )}
+          </button>
+          {bannerSrc && canEdit && (
+            <button
+              type="button"
+              onClick={handleRemoveBanner}
+              className="self-start text-xs text-muted-foreground outline-none hover:text-destructive hover:underline"
+            >
+              Quitar banner
+            </button>
+          )}
+        </div>
+
         <div className="flex items-center gap-4">
           <input
             ref={fileInputRef}
@@ -191,6 +294,39 @@ export function GeneralSection({ server, canEdit, canManageInvites, onUpdated }:
           )}
         </div>
       )}
+
+      <div className="mt-8 w-full border-t border-border pt-6">
+        <Label>Notificaciones predeterminadas</Label>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Nivel de alertas que reciben los miembros nuevos al unirse a {server.name}.
+        </p>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild disabled={!canEdit || savingNotif}>
+            <button
+              type="button"
+              className="mt-1.5 flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-sm font-medium text-foreground outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-60"
+            >
+              {OPCIONES_NOTIFICACIONES.find((o) => o.value === server.defaultNotifications)?.label}
+              <ChevronDown className="size-3.5 text-muted-foreground" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-48">
+            {OPCIONES_NOTIFICACIONES.map((opcion) => (
+              <DropdownMenuItem
+                key={opcion.value}
+                onSelect={() => handleChangeDefaultNotifications(opcion.value)}
+              >
+                {opcion.label}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+        {notifError && (
+          <p className="mt-1.5 text-xs text-destructive" role="alert">
+            {notifError}
+          </p>
+        )}
+      </div>
     </div>
   )
 }

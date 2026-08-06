@@ -15,13 +15,6 @@ import type { ChatUser, UserStatus } from '@/lib/types'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
-import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -51,35 +44,7 @@ const COLORES_BANNER = [
   '#9ca3af',
 ]
 
-interface ConfigurarPerfilDialogProps {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  userId: string
-  onProfileUpdated: (user: ChatUser) => void
-}
-
-export function ConfigurarPerfilDialog({
-  open,
-  onOpenChange,
-  userId,
-  onProfileUpdated,
-}: ConfigurarPerfilDialogProps) {
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="overflow-hidden bg-black p-0 sm:max-w-lg">
-        {open && (
-          <ConfigurarPerfilForm
-            key={userId}
-            userId={userId}
-            onProfileUpdated={onProfileUpdated}
-          />
-        )}
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-function ConfigurarPerfilForm({
+export function ConfigurarPerfilForm({
   userId,
   onProfileUpdated,
 }: {
@@ -248,100 +213,101 @@ function ConfigurarPerfilForm({
   const estadoActual = estados.find((e) => e.value === status) ?? estados[0]
 
   return (
-    <form onSubmit={handleSubmit} className="relative flex flex-col">
-      <div
-        className="absolute inset-0 bg-cover bg-center"
-        style={
-          bannerSrc
-            ? { backgroundImage: `url(${bannerSrc})`, backgroundColor: colorBanner }
-            : { backgroundColor: colorBanner }
-        }
-      />
-      <div className="absolute inset-0 bg-black/80" />
-
-      <div className="relative z-10 flex flex-col gap-5 p-6">
-      <DialogHeader>
-        <DialogTitle>Configurar perfil</DialogTitle>
-        <DialogDescription>
+    <form onSubmit={handleSubmit} className="flex flex-col gap-5">
+      <div>
+        <h1 className="text-lg font-semibold text-foreground">Mi cuenta</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
           Tu avatar, nombre y estado son visibles para todos los servidores en
           los que participás.
-        </DialogDescription>
-      </DialogHeader>
+        </p>
+      </div>
 
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex items-center gap-4">
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={handlePickAvatar}
-          />
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            className="relative shrink-0 rounded-full outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-          >
-            <Avatar className="size-16 ring-4 ring-black">
-              {previewSrc && <AvatarImage src={previewSrc} />}
-              <AvatarFallback>
-                {(nombreCompleto || nombreUsuario).slice(0, 2).toUpperCase()}
-              </AvatarFallback>
-            </Avatar>
-            <span className="absolute inset-0 flex items-center justify-center rounded-full bg-black/50 text-white opacity-0 transition-opacity hover:opacity-100">
-              <ImagePlus className="size-5" />
-            </span>
-          </button>
-          <div className="flex flex-col gap-1.5">
-            <Label>Estado</Label>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button
-                  type="button"
-                  className="flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-xs font-medium text-foreground outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50"
-                >
-                  <span className={cn('size-2 rounded-full', estadoActual.dot)} />
-                  {estadoActual.label}
-                  <ChevronDown className="size-3 text-muted-foreground" />
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="w-40">
-                {estados.map(({ value, label, dot }) => (
-                  <DropdownMenuItem key={value} onSelect={() => setStatus(value)}>
-                    <span className={cn('size-2 rounded-full', dot)} />
-                    {label}
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-        </div>
+      <div className="relative overflow-hidden rounded-xl border border-border">
+        <div
+          className="absolute inset-0 bg-cover bg-center"
+          style={
+            bannerSrc
+              ? { backgroundImage: `url(${bannerSrc})`, backgroundColor: colorBanner }
+              : { backgroundColor: colorBanner }
+          }
+        />
+        <div className="absolute inset-0 bg-black/70" />
 
-        <div className="flex shrink-0 flex-col items-end gap-1">
-          <input
-            ref={bannerInputRef}
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={handlePickBanner}
-          />
-          <button
-            type="button"
-            onClick={() => bannerInputRef.current?.click()}
-            className="flex items-center gap-1.5 rounded-md bg-black/40 px-2.5 py-1.5 text-xs font-medium text-white outline-none backdrop-blur-sm hover:bg-black/60 focus-visible:ring-2 focus-visible:ring-ring/50"
-          >
-            <ImagePlus className="size-3.5" />
-            Cambiar banner
-          </button>
-          {bannerSrc && (
+        <div className="relative z-10 flex items-end justify-between gap-3 p-4 pt-12">
+          <div className="flex items-center gap-4">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handlePickAvatar}
+            />
             <button
               type="button"
-              onClick={handleRemoveBanner}
-              className="text-[11px] text-white/70 outline-none hover:text-destructive hover:underline"
+              onClick={() => fileInputRef.current?.click()}
+              className="relative shrink-0 rounded-full outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
             >
-              Quitar banner
+              <Avatar className="size-16 ring-4 ring-black">
+                {previewSrc && <AvatarImage src={previewSrc} />}
+                <AvatarFallback>
+                  {(nombreCompleto || nombreUsuario).slice(0, 2).toUpperCase()}
+                </AvatarFallback>
+              </Avatar>
+              <span className="absolute inset-0 flex items-center justify-center rounded-full bg-black/50 text-white opacity-0 transition-opacity hover:opacity-100">
+                <ImagePlus className="size-5" />
+              </span>
             </button>
-          )}
+            <div className="flex flex-col gap-1.5">
+              <Label className="text-white/80">Estado</Label>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    className="flex items-center gap-1.5 rounded-md border border-white/15 bg-black/30 px-2.5 py-1 text-xs font-medium text-white outline-none backdrop-blur-sm hover:bg-black/50 focus-visible:ring-2 focus-visible:ring-ring/50"
+                  >
+                    <span className={cn('size-2 rounded-full', estadoActual.dot)} />
+                    {estadoActual.label}
+                    <ChevronDown className="size-3 text-white/70" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-40">
+                  {estados.map(({ value, label, dot }) => (
+                    <DropdownMenuItem key={value} onSelect={() => setStatus(value)}>
+                      <span className={cn('size-2 rounded-full', dot)} />
+                      {label}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          </div>
+
+          <div className="flex shrink-0 flex-col items-end gap-1">
+            <input
+              ref={bannerInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handlePickBanner}
+            />
+            <button
+              type="button"
+              onClick={() => bannerInputRef.current?.click()}
+              className="flex items-center gap-1.5 rounded-md bg-black/40 px-2.5 py-1.5 text-xs font-medium text-white outline-none backdrop-blur-sm hover:bg-black/60 focus-visible:ring-2 focus-visible:ring-ring/50"
+            >
+              <ImagePlus className="size-3.5" />
+              Cambiar banner
+            </button>
+            {bannerSrc && (
+              <button
+                type="button"
+                onClick={handleRemoveBanner}
+                className="text-[11px] text-white/70 outline-none hover:text-destructive hover:underline"
+              >
+                Quitar banner
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -482,12 +448,11 @@ function ConfigurarPerfilForm({
         </p>
       )}
 
-      <div className="flex items-center gap-3 border-t border-white/10 pt-4">
+      <div className="flex items-center gap-3 border-t border-border pt-4">
         <Button type="submit" disabled={loading || !nombreUsuario.trim() || !dirty}>
           {loading ? 'Guardando…' : 'Guardar cambios'}
         </Button>
         {saved && <span className="text-sm text-muted-foreground">Guardado ✓</span>}
-      </div>
       </div>
     </form>
   )

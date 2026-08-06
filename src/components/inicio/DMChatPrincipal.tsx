@@ -11,11 +11,13 @@ import {
   Send,
   Smile,
   SmilePlus,
+  Sticker as StickerIcon,
   Square,
   X,
 } from 'lucide-react'
 
 import { buildDMMessageLink } from '@/lib/deep-links'
+import { renderMessageContent } from '@/lib/render-message-content'
 import { cn, getErrorMessage } from '@/lib/utils'
 import { formatFencedCode, parseFencedCode } from '@/lib/code-fence'
 import { groupMessages } from '@/lib/message-grouping'
@@ -23,6 +25,7 @@ import { CHAT_ADJUNTO_ACCEPT, subirArchivoChat, subirNotaDeVoz } from '@/lib/sto
 import { alternarReaccionMensajeDirecto } from '@/lib/dms'
 import { useMessageActions } from '@/hooks/use-message-actions'
 import { useVoiceMessageRecorder } from '@/hooks/use-voice-message-recorder'
+import { useUserExpresiones } from '@/hooks/use-user-expresiones'
 import type {
   ChatAttachment,
   ChatMessage,
@@ -32,6 +35,7 @@ import type {
 } from '@/lib/types'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Textarea } from '@/components/ui/textarea'
+import { RichComposerInput, type RichComposerInputHandle } from '@/components/RichComposerInput'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import {
   ContextMenu,
@@ -48,6 +52,7 @@ import {
 import { MediaViewerDialog } from '@/components/MediaViewerDialog'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { EmojiPicker } from '@/components/EmojiPicker'
+import { EmojiAutocomplete } from '@/components/EmojiAutocomplete'
 import { MessageReactions } from '@/components/MessageReactions'
 import { VoiceMessageRecorder } from '@/components/VoiceMessageRecorder'
 import { VoiceMessagePlayer } from '@/components/VoiceMessagePlayer'
@@ -89,6 +94,7 @@ function CodeBlock({ language, code }: CodeBlockData) {
 interface MessageRowProps {
   message: ChatMessage
   currentUserId: string
+  customEmojis: Map<string, string>
   onEditMessage: (messageId: string, content: string) => void
   onDeleteMessage: (messageId: string) => void
   onReplyMessage: (message: ChatMessage) => void
@@ -100,6 +106,7 @@ interface MessageRowProps {
 function MessageRow({
   message,
   currentUserId,
+  customEmojis,
   onEditMessage,
   onDeleteMessage,
   onReplyMessage,
@@ -224,7 +231,7 @@ function MessageRow({
             <>
               {message.content && (
                 <p className="text-sm break-words whitespace-pre-wrap text-foreground/90">
-                  {message.content}
+                  {renderMessageContent(message.content, customEmojis)}
                   {message.editedAt && (
                     <span className="ml-1 text-[10px] text-muted-foreground">(editado)</span>
                   )}
@@ -377,10 +384,26 @@ export function DMChatPrincipal({
   const [isDraggingFile, setIsDraggingFile] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const scrollBottomRef = useRef<HTMLDivElement>(null)
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const textareaRef = useRef<RichComposerInputHandle>(null)
   const dragCounterRef = useRef(0)
   const sendVoiceOnStopRef = useRef(false)
   const groups = groupMessages(messages)
+  const { emojis, stickers } = useUserExpresiones(currentUserId)
+  const customEmojiList = useMemo(() => [...emojis, ...stickers], [emojis, stickers])
+  const emojiMap = useMemo(
+    () => new Map(customEmojiList.map((e) => [e.nombre, e.url])),
+    [customEmojiList]
+  )
+  const [stickerPopoverOpen, setStickerPopoverOpen] = useState(false)
+  const emojiAutocompleteQuery = useMemo(() => {
+    const match = /(^|\s):([a-zA-Z0-9_]{1,20})$/.exec(draft)
+    return match ? match[2] : null
+  }, [draft])
+
+  function handleSelectAutocompleteEmoji(nombre: string) {
+    setDraft((prev) => prev.replace(/:[a-zA-Z0-9_]{0,20}$/, `:${nombre}: `))
+    textareaRef.current?.focus()
+  }
 
   const pendingPreviewUrl = useMemo(
     () => (pendingFile ? URL.createObjectURL(pendingFile) : null),
@@ -509,7 +532,7 @@ export function DMChatPrincipal({
     submitDraft()
   }
 
-  function handleKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>) {
+  function handleKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault()
       if (voiceRecorder.recording) {
@@ -571,6 +594,7 @@ export function DMChatPrincipal({
                     key={message.id}
                     message={message}
                     currentUserId={currentUserId}
+                    customEmojis={emojiMap}
                     onEditMessage={onEditMessage}
                     onDeleteMessage={onDeleteMessage}
                     onReplyMessage={onReplyMessage}
@@ -665,10 +689,17 @@ export function DMChatPrincipal({
         )}
         <div
           className={cn(
-            'flex items-end gap-1 rounded-xl border border-input bg-muted/40 px-2 py-1.5',
+            'relative flex items-end gap-1 rounded-xl border border-input bg-muted/40 px-2 py-1.5',
             'focus-within:ring-3 focus-within:ring-ring/50'
           )}
         >
+          {emojiAutocompleteQuery !== null && (
+            <EmojiAutocomplete
+              query={emojiAutocompleteQuery}
+              emojis={customEmojiList}
+              onSelect={handleSelectAutocompleteEmoji}
+            />
+          )}
           <input
             ref={fileInputRef}
             type="file"
@@ -726,14 +757,13 @@ export function DMChatPrincipal({
             </TooltipContent>
           </Tooltip>
 
-          <Textarea
+          <RichComposerInput
             ref={textareaRef}
             value={draft}
-            onChange={(event) => setDraft(event.target.value)}
+            customEmojis={emojiMap}
+            onChange={(value) => setDraft(value)}
             onKeyDown={handleKeyDown}
             placeholder={`Enviar mensaje a ${otherUser.name}`}
-            rows={1}
-            className="max-h-52 min-h-8 flex-1 resize-none overflow-y-auto border-0 bg-transparent py-1 shadow-none focus-visible:ring-0"
           />
 
           <Popover>
@@ -752,9 +782,47 @@ export function DMChatPrincipal({
               <TooltipContent side="top">Emoji</TooltipContent>
             </Tooltip>
             <PopoverContent side="top" align="end" className="w-auto p-0">
-              <EmojiPicker onSelect={(emoji) => setDraft((prev) => prev + emoji)} />
+              <EmojiPicker
+                onSelect={(emoji) => setDraft((prev) => prev + emoji)}
+                customEmojis={customEmojiList}
+              />
             </PopoverContent>
           </Popover>
+
+          {stickers.length > 0 && (
+            <Popover open={stickerPopoverOpen} onOpenChange={setStickerPopoverOpen}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <PopoverTrigger asChild>
+                    <button
+                      type="button"
+                      aria-label="Stickers"
+                      className="flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50"
+                    >
+                      <StickerIcon className="size-4" />
+                    </button>
+                  </PopoverTrigger>
+                </TooltipTrigger>
+                <TooltipContent side="top">Stickers</TooltipContent>
+              </Tooltip>
+              <PopoverContent side="top" align="end" className="grid w-64 grid-cols-3 gap-2 p-2">
+                {stickers.map((sticker) => (
+                  <button
+                    key={sticker.id}
+                    type="button"
+                    title={sticker.nombre}
+                    onClick={() => {
+                      onSendMessage({ attachment: { url: sticker.url, type: 'image' } })
+                      setStickerPopoverOpen(false)
+                    }}
+                    className="flex aspect-square items-center justify-center rounded-md outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring/50"
+                  >
+                    <img src={sticker.url} alt={sticker.nombre} className="size-12 object-contain" />
+                  </button>
+                ))}
+              </PopoverContent>
+            </Popover>
+          )}
 
           <button
             type="submit"

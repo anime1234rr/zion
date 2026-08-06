@@ -192,6 +192,19 @@ if (!gotLock) {
     autoUpdater.quitAndInstall(true, true)
   })
 
+  ipcMain.handle('zion:clear-cache', async () => {
+    await session.defaultSession.clearCache()
+    await session.defaultSession.clearStorageData({
+      storages: ['cachestorage', 'serviceworkers'],
+    })
+  })
+
+  ipcMain.on('zion:open-user-data-folder', () => {
+    shell.openPath(app.getPath('userData')).catch((err) => {
+      log.error('No se pudo abrir la carpeta de datos', err)
+    })
+  })
+
   app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') {
       app.quit()

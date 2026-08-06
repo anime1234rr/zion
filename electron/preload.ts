@@ -75,4 +75,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('zion-update-error', listener)
     return () => ipcRenderer.removeListener('zion-update-error', listener)
   },
+  clearCache: (): Promise<void> => ipcRenderer.invoke('zion:clear-cache'),
+  openUserDataFolder: (): void => {
+    ipcRenderer.send('zion:open-user-data-folder')
+  },
 })

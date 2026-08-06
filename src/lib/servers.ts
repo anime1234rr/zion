@@ -1,13 +1,25 @@
 import { supabase } from '@/lib/supabase'
-import type { ChannelType, ServerItem } from '@/lib/types'
+import type {
+  ChannelType,
+  ServerDefaultNotifications,
+  ServerHistoryRetention,
+  ServerItem,
+  ServerVerificationLevel,
+} from '@/lib/types'
 
 interface ServidorRow {
   id: string
   nombre: string
   icono_url: string | null
+  banner_url: string | null
   propietario_id: string
   codigo_invitacion: string | null
   creado_at: string
+  canal_bienvenida_id: string | null
+  canal_normas_id: string | null
+  nivel_verificacion: string
+  retencion_historial: string
+  notificaciones_por_defecto: string
 }
 
 export const tipoCanalToChannelType: Record<string, ChannelType> = {
@@ -17,13 +29,31 @@ export const tipoCanalToChannelType: Record<string, ChannelType> = {
   anuncios: 'announcement',
 }
 
+const NIVELES_VERIFICACION: ServerVerificationLevel[] = ['ninguno', 'bajo', 'medio', 'alto']
+const RETENCIONES_HISTORIAL: ServerHistoryRetention[] = ['7d', '30d', '90d', '1a', 'para_siempre']
+const NOTIFICACIONES_POR_DEFECTO: ServerDefaultNotifications[] = ['todos', 'menciones']
+
 function mapServidorToServerItem(row: ServidorRow): ServerItem {
   return {
     id: row.id,
     name: row.nombre,
     ownerId: row.propietario_id,
     iconUrl: row.icono_url ?? undefined,
+    bannerUrl: row.banner_url ?? undefined,
     inviteCode: row.codigo_invitacion ?? undefined,
+    welcomeChannelId: row.canal_bienvenida_id ?? undefined,
+    rulesChannelId: row.canal_normas_id ?? undefined,
+    verificationLevel: NIVELES_VERIFICACION.includes(row.nivel_verificacion as ServerVerificationLevel)
+      ? (row.nivel_verificacion as ServerVerificationLevel)
+      : 'ninguno',
+    historyRetention: RETENCIONES_HISTORIAL.includes(row.retencion_historial as ServerHistoryRetention)
+      ? (row.retencion_historial as ServerHistoryRetention)
+      : 'para_siempre',
+    defaultNotifications: NOTIFICACIONES_POR_DEFECTO.includes(
+      row.notificaciones_por_defecto as ServerDefaultNotifications
+    )
+      ? (row.notificaciones_por_defecto as ServerDefaultNotifications)
+      : 'todos',
   }
 }
 
@@ -113,11 +143,27 @@ export function suscribirseAServidores(
 
 export async function actualizarServidor(
   servidorId: string,
-  cambios: { nombre?: string; iconoUrl?: string }
+  cambios: {
+    nombre?: string
+    iconoUrl?: string
+    bannerUrl?: string | null
+    welcomeChannelId?: string | null
+    rulesChannelId?: string | null
+    verificationLevel?: ServerVerificationLevel
+    historyRetention?: ServerHistoryRetention
+    defaultNotifications?: ServerDefaultNotifications
+  }
 ): Promise<ServerItem> {
-  const patch: Record<string, string> = {}
+  const patch: Record<string, unknown> = {}
   if (cambios.nombre !== undefined) patch.nombre = cambios.nombre.trim()
   if (cambios.iconoUrl !== undefined) patch.icono_url = cambios.iconoUrl
+  if (cambios.bannerUrl !== undefined) patch.banner_url = cambios.bannerUrl
+  if (cambios.welcomeChannelId !== undefined) patch.canal_bienvenida_id = cambios.welcomeChannelId
+  if (cambios.rulesChannelId !== undefined) patch.canal_normas_id = cambios.rulesChannelId
+  if (cambios.verificationLevel !== undefined) patch.nivel_verificacion = cambios.verificationLevel
+  if (cambios.historyRetention !== undefined) patch.retencion_historial = cambios.historyRetention
+  if (cambios.defaultNotifications !== undefined)
+    patch.notificaciones_por_defecto = cambios.defaultNotifications
 
   const { data, error } = await supabase
     .from('servidores')

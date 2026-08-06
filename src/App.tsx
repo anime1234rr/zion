@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 
 import { useAuth } from '@/hooks/use-auth'
+import { cn } from '@/lib/utils'
 import { obtenerPerfil } from '@/lib/profiles'
 import {
   iniciarHeartbeat,
@@ -51,6 +52,7 @@ import { VistaInicio } from '@/components/inicio/VistaInicio'
 import { ForwardMessageDialog } from '@/components/ForwardMessageDialog'
 import { ToastViewport } from '@/components/ToastViewport'
 import { TooltipProvider } from '@/components/ui/tooltip'
+import { AppBackgroundLayer } from '@/components/AppBackgroundLayer'
 
 type ViewMode = 'server' | 'dm'
 
@@ -67,6 +69,10 @@ function AppShell({ userId }: { userId: string }) {
 
   const [view, setView] = useState<ViewMode>('server')
   const [profile, setProfile] = useState<ChatUser | null>(null)
+
+  function handleProfileUpdated(updated: ChatUser) {
+    setProfile((prev) => (prev ? { ...prev, ...updated } : updated))
+  }
   const [servers, setServers] = useState<ServerItem[]>([])
   const [activeServerId, setActiveServerId] = useState<string | null>(null)
   const [categories, setCategories] = useState<ChannelCategory[]>([])
@@ -364,7 +370,14 @@ function AppShell({ userId }: { userId: string }) {
   }, [])
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-background text-foreground">
+    <div
+      className={cn(
+        'relative isolate flex h-screen w-screen overflow-hidden bg-background text-foreground',
+        profile?.backgroundUrl && 'has-app-background'
+      )}
+    >
+      <AppBackgroundLayer url={profile?.backgroundUrl} type={profile?.backgroundType} />
+
       <SidebarServidores
         servers={servers}
         activeServerId={activeServerId ?? ''}
@@ -380,7 +393,7 @@ function AppShell({ userId }: { userId: string }) {
           currentUserId={userId}
           profile={profile}
           onSignOut={signOut}
-          onProfileUpdated={setProfile}
+          onProfileUpdated={handleProfileUpdated}
           pendingUserId={pendingDmUserId}
           onPendingUserHandled={() => setPendingDmUserId(null)}
           pendingConversation={pendingConversation}
@@ -396,7 +409,7 @@ function AppShell({ userId }: { userId: string }) {
               onSelectChannel={setActiveChannelId}
               currentUser={profile}
               onSignOut={signOut}
-              onProfileUpdated={setProfile}
+              onProfileUpdated={handleProfileUpdated}
               onServerUpdated={(servidor) =>
                 setServers((prev) => upsertServer(prev, servidor))
               }

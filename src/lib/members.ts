@@ -6,6 +6,7 @@ export interface ServerRole {
   id: string
   nombre: string
   color: string | null
+  posicion: number
   esRolBase: boolean
   permisos: Record<string, boolean>
 }
@@ -86,6 +87,7 @@ interface RolRow {
   id: string
   nombre: string
   color: string | null
+  posicion: number
   es_rol_base: boolean
   permisos: Record<string, boolean>
 }
@@ -105,6 +107,7 @@ function mapRol(row: RolRow): ServerRole {
     id: row.id,
     nombre: row.nombre,
     color: row.color,
+    posicion: row.posicion,
     esRolBase: row.es_rol_base,
     permisos: row.permisos ?? {},
   }
@@ -117,6 +120,7 @@ export async function listarRolesDeServidor(
     .from('roles_servidor')
     .select('*')
     .eq('servidor_id', servidorId)
+    .order('posicion', { ascending: true })
     .order('creado_at', { ascending: true })
     .returns<RolRow[]>()
 
@@ -143,6 +147,36 @@ export async function listarMiembros(servidorId: string): Promise<ServerMember[]
     silencedUntil: row.silenciado_hasta,
     nickname: row.apodo,
   }))
+}
+
+export interface MentionableMember {
+  id: string
+  username: string
+  displayName: string
+}
+
+interface MiembroMencionRow {
+  usuario_id: string
+  perfiles: { nombre_usuario: string; nombre_completo: string | null } | null
+}
+
+export async function listarMiembrosParaMencion(
+  servidorId: string
+): Promise<MentionableMember[]> {
+  const { data, error } = await supabase
+    .from('miembros_servidor')
+    .select('usuario_id, perfiles(nombre_usuario, nombre_completo)')
+    .eq('servidor_id', servidorId)
+    .returns<MiembroMencionRow[]>()
+
+  if (error) throw error
+  return (data ?? [])
+    .filter((row) => row.perfiles)
+    .map((row) => ({
+      id: row.usuario_id,
+      username: row.perfiles!.nombre_usuario,
+      displayName: row.perfiles!.nombre_completo?.trim() || row.perfiles!.nombre_usuario,
+    }))
 }
 
 export async function obtenerMembresiaDeUsuario(
@@ -410,7 +444,8 @@ export async function crearRol(
   servidorId: string,
   nombre: string,
   color: string,
-  permisos: Record<string, boolean>
+  permisos: Record<string, boolean>,
+  posicion: number
 ): Promise<ServerRole> {
   const { data, error } = await supabase
     .from('roles_servidor')
@@ -419,12 +454,28 @@ export async function crearRol(
       nombre: nombre.trim(),
       color,
       permisos,
+      posicion,
     })
     .select('*')
     .single<RolRow>()
 
   if (error) throw error
   return mapRol(data)
+}
+
+export async function reordenarRoles(
+  roles: { id: string; posicion: number }[]
+): Promise<void> {
+  const { error } = await Promise.all(
+    roles.map((role) =>
+      supabase.from('roles_servidor').update({ posicion: role.posicion }).eq('id', role.id)
+    )
+  ).then((results) => {
+    const failed = results.find((r) => r.error)
+    return { error: failed?.error ?? null }
+  })
+
+  if (error) throw error
 }
 
 export async function actualizarRol(

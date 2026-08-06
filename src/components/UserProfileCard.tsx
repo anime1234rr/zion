@@ -6,7 +6,7 @@ import { obtenerMembresiaDeUsuario, type ServerRole } from '@/lib/members'
 import { obtenerPerfilPublico, type PublicProfile } from '@/lib/profiles'
 import { parseBioRichText } from '@/lib/bio-format'
 import { getErrorMessage } from '@/lib/utils'
-import type { ServerItem, UserStatus } from '@/lib/types'
+import type { ChatUser, ServerItem, UserStatus } from '@/lib/types'
 import {
   Avatar,
   AvatarBadge,
@@ -20,7 +20,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import { ConfigurarPerfilDialog } from '@/components/ConfigurarPerfilDialog'
+import { AccountSettingsPanel } from '@/components/account-settings/AccountSettingsPanel'
 
 const statusColor: Record<UserStatus, string> = {
   online: 'bg-online',
@@ -261,11 +261,19 @@ export function UserProfileCard({
         </PopoverContent>
       </Popover>
 
-      {isOwnProfile && (
-        <ConfigurarPerfilDialog
+      {isOwnProfile && profile && (
+        <AccountSettingsPanel
           open={editOpen}
           onOpenChange={setEditOpen}
-          userId={userId}
+          initialSection="perfil"
+          currentUser={
+            {
+              id: userId,
+              name: profile.nombreCompleto || profile.nombreUsuario,
+              avatarUrl: profile.avatarUrl,
+              status: profile.status,
+            } satisfies ChatUser
+          }
           onProfileUpdated={() => {
             obtenerPerfilPublico(userId)
               .then(setProfile)

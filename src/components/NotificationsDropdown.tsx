@@ -7,6 +7,8 @@ import {
   suscribirseANotificaciones,
   type AppNotification,
 } from '@/lib/notifications'
+import { getNotificationSettings } from '@/hooks/use-notification-settings'
+import { playNotificationSound } from '@/lib/notification-sound'
 import { cn, getErrorMessage } from '@/lib/utils'
 import {
   DropdownMenu,
@@ -57,6 +59,12 @@ export function NotificationsDropdown({ userId, onNavigateToServer }: Notificati
       setNotificaciones((prev) =>
         prev.some((n) => n.id === nueva.id) ? prev : [nueva, ...prev]
       )
+
+      const settings = getNotificationSettings()
+      if (settings.soundOnNotification) playNotificationSound()
+      if (settings.desktopNotifications && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+        new Notification(nueva.titulo, { body: nueva.mensaje })
+      }
     })
 
     return () => {

@@ -45,6 +45,28 @@ export function subirBanner(userId: string, file: File) {
   return subirImagen('user-banners', userId, file, BANNER_MAX_SIZE_BYTES)
 }
 
+export function subirBannerServidor(userId: string, file: File) {
+  return subirImagen('iconos_servidores', userId, file, BANNER_MAX_SIZE_BYTES)
+}
+
+const EXPRESION_MAX_SIZE_BYTES = 2 * 1024 * 1024
+
+export async function subirExpresionServidor(servidorId: string, file: File): Promise<string> {
+  assertImagenValida(file, EXPRESION_MAX_SIZE_BYTES)
+
+  const extension = file.name.split('.').pop() ?? 'png'
+  const path = `expresiones/${servidorId}/${crypto.randomUUID()}.${extension}`
+
+  const { error } = await supabase.storage.from('iconos_servidores').upload(path, file, {
+    cacheControl: '3600',
+    upsert: false,
+    contentType: file.type,
+  })
+  if (error) throw error
+
+  return supabase.storage.from('iconos_servidores').getPublicUrl(path).data.publicUrl
+}
+
 const CHAT_MAX_SIZE_BYTES = 50 * 1024 * 1024
 const CHAT_MIME_A_TIPO: Record<string, 'imagen' | 'video'> = {
   'image/jpeg': 'imagen',
@@ -86,6 +108,53 @@ export async function subirArchivoChat(
   if (error) throw error
 
   const url = supabase.storage.from('archivos-chat').getPublicUrl(path).data.publicUrl
+  return { url, tipo }
+}
+
+const FONDO_MAX_IMAGEN_BYTES = 10 * 1024 * 1024
+const FONDO_MAX_VIDEO_BYTES = 30 * 1024 * 1024
+
+const FONDO_MIME_A_TIPO: Record<string, 'imagen' | 'video'> = {
+  'image/jpeg': 'imagen',
+  'image/png': 'imagen',
+  'image/gif': 'imagen',
+  'image/webp': 'imagen',
+  'video/mp4': 'video',
+  'video/webm': 'video',
+  'video/quicktime': 'video',
+}
+
+export const FONDO_APP_ACCEPT = Object.keys(FONDO_MIME_A_TIPO).join(',')
+
+function assertFondoAppValido(file: File): 'imagen' | 'video' {
+  const tipo = FONDO_MIME_A_TIPO[file.type]
+  if (!tipo) {
+    throw new Error('Solo se pueden usar imágenes (jpeg, png, gif, webp) o videos (mp4, webm, mov).')
+  }
+  const maxBytes = tipo === 'video' ? FONDO_MAX_VIDEO_BYTES : FONDO_MAX_IMAGEN_BYTES
+  if (file.size > maxBytes) {
+    throw new Error(`El archivo no puede pesar más de ${Math.round(maxBytes / (1024 * 1024))} MB.`)
+  }
+  return tipo
+}
+
+export async function subirFondoApp(
+  userId: string,
+  file: File
+): Promise<{ url: string; tipo: 'imagen' | 'video' }> {
+  const tipo = assertFondoAppValido(file)
+
+  const extension = file.name.split('.').pop() ?? (tipo === 'imagen' ? 'png' : 'mp4')
+  const path = `${userId}/${crypto.randomUUID()}.${extension}`
+
+  const { error } = await supabase.storage.from('app-backgrounds').upload(path, file, {
+    cacheControl: '3600',
+    upsert: false,
+    contentType: file.type,
+  })
+  if (error) throw error
+
+  const url = supabase.storage.from('app-backgrounds').getPublicUrl(path).data.publicUrl
   return { url, tipo }
 }
 

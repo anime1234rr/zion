@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Ban, ChevronDown, Clock, Crown, MoreHorizontal, Pencil, Plus, UserX, Volume2 } from 'lucide-react'
+import { Ban, ChevronDown, Clock, Crown, MoreHorizontal, Pencil, UserX, Volume2 } from 'lucide-react'
 
 import {
   actualizarApodoMiembro,
@@ -37,7 +37,6 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { RoleEditorPanel } from '@/components/server-settings/RoleEditorPanel'
 import { ConfirmarAccionDialog } from '@/components/server-settings/ConfirmarAccionDialog'
 import { BanMemberDialog } from '@/components/server-settings/BanMemberDialog'
 import { EditNicknameDialog } from '@/components/server-settings/EditNicknameDialog'
@@ -70,10 +69,7 @@ interface PersonasSectionProps {
   currentUserId: string
 }
 
-type Tab = 'miembros' | 'roles' | 'baneados'
-type RoleSelection = string | 'new' | 'owner' | null
-
-const OWNER_SYNTHETIC_ROLE_ID = 'owner'
+type Tab = 'miembros' | 'baneados'
 
 export function PersonasSection({ server, currentUserId }: PersonasSectionProps) {
   const { isOwner, hasPermission } = useServerPermissions(server, currentUserId)
@@ -91,7 +87,6 @@ export function PersonasSection({ server, currentUserId }: PersonasSectionProps)
   const [banTarget, setBanTarget] = useState<ServerMember | null>(null)
   const [nicknameTarget, setNicknameTarget] = useState<ServerMember | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
-  const [selectedRoleId, setSelectedRoleId] = useState<RoleSelection>(null)
   const [bannedMembers, setBannedMembers] = useState<BannedMember[]>([])
   const [bannedLoading, setBannedLoading] = useState(false)
   const [bannedError, setBannedError] = useState<string | null>(null)
@@ -105,9 +100,6 @@ export function PersonasSection({ server, currentUserId }: PersonasSectionProps)
           if (cancelado) return
           setMembers(m)
           setRoles(r)
-          setSelectedRoleId((prev) =>
-            prev && prev !== 'new' && !r.some((rol) => rol.id === prev) ? null : prev
-          )
         })
         .catch((err) => !cancelado && setError(getErrorMessage(err)))
     }
@@ -157,30 +149,6 @@ export function PersonasSection({ server, currentUserId }: PersonasSectionProps)
     })
   }, [members])
 
-  const memberCountByRole = useMemo(() => {
-    const counts = new Map<string, number>()
-    for (const member of members) {
-      if (!member.role) continue
-      counts.set(member.role.id, (counts.get(member.role.id) ?? 0) + 1)
-    }
-    return counts
-  }, [members])
-
-  const ownerSyntheticRole: ServerRole = {
-    id: OWNER_SYNTHETIC_ROLE_ID,
-    nombre: 'Propietario',
-    color: '#f5a623',
-    esRolBase: false,
-    permisos: { admin: true },
-  }
-
-  const selectedRole =
-    selectedRoleId === OWNER_SYNTHETIC_ROLE_ID
-      ? ownerSyntheticRole
-      : selectedRoleId && selectedRoleId !== 'new'
-        ? (roles.find((r) => r.id === selectedRoleId) ?? null)
-        : null
-
   async function handleAssignRole(member: ServerMember, role: ServerRole) {
     if (member.role?.id === role.id) return
     setActionError(null)
@@ -194,17 +162,6 @@ export function PersonasSection({ server, currentUserId }: PersonasSectionProps)
       setMembers(previous)
       setActionError(getErrorMessage(err))
     }
-  }
-
-  function handleRoleSaved(role: ServerRole) {
-    setRoles((prev) => {
-      const exists = prev.some((r) => r.id === role.id)
-      return exists ? prev.map((r) => (r.id === role.id ? role : r)) : [...prev, role]
-    })
-    setMembers((prev) =>
-      prev.map((m) => (m.role?.id === role.id ? { ...m, role } : m))
-    )
-    setSelectedRoleId(role.id)
   }
 
   async function handleSilenciar(member: ServerMember, minutos: number) {
@@ -262,16 +219,8 @@ export function PersonasSection({ server, currentUserId }: PersonasSectionProps)
     }
   }
 
-  function handleRoleDeleted(roleId: string) {
-    setRoles((prev) => prev.filter((r) => r.id !== roleId))
-    setMembers((prev) =>
-      prev.map((m) => (m.role?.id === roleId ? { ...m, role: null } : m))
-    )
-    setSelectedRoleId(null)
-  }
-
   return (
-    <div className={tab === 'roles' ? 'max-w-4xl' : 'max-w-2xl'}>
+    <div className="max-w-2xl">
       <h1 className="text-lg font-semibold text-foreground">Personas</h1>
       <p className="mt-1 text-sm text-muted-foreground">
         {members.length} {members.length === 1 ? 'miembro' : 'miembros'} en{' '}
@@ -282,7 +231,6 @@ export function PersonasSection({ server, currentUserId }: PersonasSectionProps)
         {(
           [
             ['miembros', 'Miembros'],
-            ...(canManageRoles ? ([['roles', 'Roles']] as const) : []),
             ...(canBanMembers ? ([['baneados', 'Baneados']] as const) : []),
           ] as const
         ).map(([id, label]) => (
@@ -572,103 +520,6 @@ export function PersonasSection({ server, currentUserId }: PersonasSectionProps)
         </div>
       )}
 
-      {!loading && !error && tab === 'roles' && canManageRoles && (
-        <div className="mt-4 grid grid-cols-[260px_1fr] gap-4">
-          <div className="flex flex-col gap-1.5">
-            {canManageRoles && (
-              <button
-                type="button"
-                onClick={() => setSelectedRoleId('new')}
-                className="flex items-center justify-center gap-1.5 rounded-lg border border-dashed border-border py-2 text-sm text-muted-foreground outline-none hover:border-solid hover:bg-muted/50 hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50"
-              >
-                <Plus className="size-4" />
-                Crear rol
-              </button>
-            )}
-
-            <button
-              type="button"
-              onClick={() => setSelectedRoleId(OWNER_SYNTHETIC_ROLE_ID)}
-              className={cn(
-                'flex items-center gap-2.5 rounded-lg border border-transparent px-3 py-2.5 text-left outline-none hover:bg-muted/50 focus-visible:ring-3 focus-visible:ring-ring/50',
-                selectedRoleId === OWNER_SYNTHETIC_ROLE_ID && 'border-border bg-muted/70'
-              )}
-            >
-              <span
-                className="h-6 w-1 shrink-0 rounded-full"
-                style={{ backgroundColor: ownerSyntheticRole.color ?? '#9ca3af' }}
-              />
-              <span className="min-w-0 flex-1">
-                <span className="flex items-center gap-1.5 truncate text-sm text-foreground">
-                  <Crown className="size-3.5 shrink-0 text-muted-foreground" />
-                  Propietario
-                </span>
-                <span className="block text-xs text-muted-foreground">1 miembro</span>
-              </span>
-            </button>
-
-            {roles.length === 0 && (
-              <p className="px-1 py-2 text-xs text-muted-foreground">
-                El servidor arranca sin roles. Creá el primero.
-              </p>
-            )}
-
-            {roles.map((role) => (
-              <button
-                key={role.id}
-                type="button"
-                onClick={() => setSelectedRoleId(role.id)}
-                className={cn(
-                  'flex items-center gap-2.5 rounded-lg border border-transparent px-3 py-2.5 text-left outline-none hover:bg-muted/50 focus-visible:ring-3 focus-visible:ring-ring/50',
-                  selectedRoleId === role.id && 'border-border bg-muted/70'
-                )}
-              >
-                <span
-                  className="h-6 w-1 shrink-0 rounded-full"
-                  style={{ backgroundColor: role.color ?? '#9ca3af' }}
-                />
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm text-foreground">
-                    {role.nombre}
-                  </span>
-                  <span className="block text-xs text-muted-foreground">
-                    {memberCountByRole.get(role.id) ?? 0}{' '}
-                    {(memberCountByRole.get(role.id) ?? 0) === 1
-                      ? 'miembro'
-                      : 'miembros'}
-                  </span>
-                </span>
-              </button>
-            ))}
-          </div>
-
-          <div className="min-h-[420px]">
-            {selectedRoleId ? (
-              <RoleEditorPanel
-                servidorId={server.id}
-                role={selectedRole}
-                memberCount={
-                  selectedRoleId === OWNER_SYNTHETIC_ROLE_ID
-                    ? 1
-                    : selectedRole
-                      ? (memberCountByRole.get(selectedRole.id) ?? 0)
-                      : 0
-                }
-                canEdit={selectedRoleId === OWNER_SYNTHETIC_ROLE_ID ? false : canManageRoles}
-                onClose={() => setSelectedRoleId(null)}
-                onSaved={handleRoleSaved}
-                onDeleted={handleRoleDeleted}
-              />
-            ) : (
-              <div className="flex h-full flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-border text-center">
-                <p className="text-sm text-muted-foreground">
-                  Elegí un rol para editarlo, o creá uno nuevo.
-                </p>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
     </div>
   )
 }

@@ -33,6 +33,8 @@ interface ElectronAPI {
   onUpdateProgress: (callback: (progress: UpdateProgressPayload) => void) => () => void
   onUpdateDownloaded: (callback: (info: UpdateInfoPayload) => void) => () => void
   onUpdateError: (callback: (message: string) => void) => () => void
+  clearCache: () => Promise<void>
+  openUserDataFolder: () => void
 }
 
 declare global {
@@ -104,4 +106,12 @@ export function onUpdateDownloaded(callback: (info: UpdateInfoPayload) => void):
 
 export function onUpdateError(callback: (message: string) => void): () => void {
   return window.electronAPI?.onUpdateError(callback) ?? (() => {})
+}
+
+export function clearCache(): Promise<void> {
+  return window.electronAPI?.clearCache() ?? Promise.resolve()
+}
+
+export function openUserDataFolder(): void {
+  window.electronAPI?.openUserDataFolder()
 }

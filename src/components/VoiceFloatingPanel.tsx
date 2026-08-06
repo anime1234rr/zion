@@ -48,7 +48,7 @@ export function VoiceFloatingPanel({ currentUserId, hidden, onReturnToChannel }:
     if (!el) return
     const rect = el.getBoundingClientRect()
     dragOffset.current = { x: event.clientX - rect.left, y: event.clientY - rect.top }
-    el.setPointerCapture(event.pointerId)
+    event.currentTarget.setPointerCapture(event.pointerId)
   }
 
   function handleDragPointerMove(event: React.PointerEvent<HTMLDivElement>) {
@@ -65,7 +65,7 @@ export function VoiceFloatingPanel({ currentUserId, hidden, onReturnToChannel }:
 
   function handleDragPointerUp(event: React.PointerEvent<HTMLDivElement>) {
     dragOffset.current = null
-    panelRef.current?.releasePointerCapture(event.pointerId)
+    event.currentTarget.releasePointerCapture(event.pointerId)
   }
 
   if (!connectedChannelId || !connectedServerId || hidden) return null
@@ -100,6 +100,7 @@ export function VoiceFloatingPanel({ currentUserId, hidden, onReturnToChannel }:
         onPointerDown={handleDragPointerDown}
         onPointerMove={handleDragPointerMove}
         onPointerUp={handleDragPointerUp}
+        onPointerCancel={handleDragPointerUp}
         className="flex cursor-grab items-center justify-center border-b border-border bg-muted/40 py-1 touch-none active:cursor-grabbing"
       >
         <GripHorizontal className="size-3.5 text-muted-foreground" />

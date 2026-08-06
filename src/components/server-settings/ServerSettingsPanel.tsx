@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import {
   AlertTriangle,
   Blocks,
+  Crown,
+  Hash,
   Info,
   LayoutTemplate,
   ScrollText,
@@ -17,15 +19,23 @@ import { useServerPermissions } from '@/hooks/use-server-permissions'
 import type { ServerItem } from '@/lib/types'
 import { GeneralSection } from '@/components/server-settings/GeneralSection'
 import { PersonasSection } from '@/components/server-settings/PersonasSection'
+import { RolesPermisosSection } from '@/components/server-settings/RolesPermisosSection'
+import { CanalesEstructuraSection } from '@/components/server-settings/CanalesEstructuraSection'
+import { VerificacionSection } from '@/components/server-settings/VerificacionSection'
+import { WebhooksSection } from '@/components/server-settings/WebhooksSection'
+import { ExpresionesSection } from '@/components/server-settings/ExpresionesSection'
 import { PlantillaSection } from '@/components/server-settings/PlantillaSection'
 import { ComingSoonSection } from '@/components/server-settings/ComingSoonSection'
 import { AuditLogSection } from '@/components/server-settings/AuditLogSection'
 import { DangerZoneSection } from '@/components/server-settings/DangerZoneSection'
+import { AppBackgroundLayer } from '@/components/AppBackgroundLayer'
 
 type SectionId =
   | 'general'
   | 'expresiones'
   | 'personas'
+  | 'roles-permisos'
+  | 'canales-estructura'
   | 'apps'
   | 'moderacion'
   | 'auditoria'
@@ -42,6 +52,8 @@ const sections: {
   { id: 'general', label: 'Resumen', icon: Info, group: 0 },
   { id: 'expresiones', label: 'Expresiones', icon: Smile, group: 1 },
   { id: 'personas', label: 'Personas', icon: Users, group: 1 },
+  { id: 'roles-permisos', label: 'Roles y Permisos', icon: Crown, group: 1 },
+  { id: 'canales-estructura', label: 'Canales y Estructura', icon: Hash, group: 1 },
   { id: 'apps', label: 'Apps', icon: Blocks, group: 1 },
   { id: 'moderacion', label: 'Moderación', icon: ShieldCheck, group: 1 },
   { id: 'auditoria', label: 'Auditoría', icon: ScrollText, group: 1 },
@@ -55,6 +67,8 @@ interface ServerSettingsPanelProps {
   onOpenChange: (open: boolean) => void
   server: ServerItem
   currentUserId: string
+  backgroundUrl?: string
+  backgroundType?: 'imagen' | 'video'
   onServerUpdated: (server: ServerItem) => void
   onServerDeleted?: (serverId: string) => void
 }
@@ -64,6 +78,8 @@ export function ServerSettingsPanel({
   onOpenChange,
   server,
   currentUserId,
+  backgroundUrl,
+  backgroundType,
   onServerUpdated,
   onServerDeleted,
 }: ServerSettingsPanelProps) {
@@ -82,7 +98,15 @@ export function ServerSettingsPanel({
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex bg-background" role="dialog" aria-modal>
+    <div
+      className={cn(
+        'isolate fixed inset-0 z-50 flex bg-background',
+        backgroundUrl ? 'has-app-background' : 'surface-opaque'
+      )}
+      role="dialog"
+      aria-modal
+    >
+      <AppBackgroundLayer url={backgroundUrl} type={backgroundType} />
       <nav className="flex w-60 shrink-0 flex-col gap-4 overflow-y-auto border-r border-sidebar-border bg-sidebar px-3 py-6">
         <div className="px-2">
           <p className="truncate text-xs font-semibold tracking-wide text-muted-foreground uppercase">
@@ -96,6 +120,9 @@ export function ServerSettingsPanel({
               .filter((section) => section.group === group)
               .filter((section) => section.id !== 'zona-peligro' || isOwner)
               .filter((section) => section.id !== 'auditoria' || isOwner || hasPermission('ver_registros'))
+              .filter(
+                (section) => section.id !== 'roles-permisos' || isOwner || hasPermission('gestionar_roles')
+              )
               .map((section) => (
                 <button
                   key={section.id}
@@ -139,28 +166,30 @@ export function ServerSettingsPanel({
           {active === 'personas' && (
             <PersonasSection server={server} currentUserId={currentUserId} />
           )}
+          {active === 'roles-permisos' && (isOwner || hasPermission('gestionar_roles')) && (
+            <RolesPermisosSection server={server} currentUserId={currentUserId} />
+          )}
+          {active === 'canales-estructura' && (
+            <CanalesEstructuraSection
+              server={server}
+              canEdit={hasPermission('gestionar_servidor')}
+              onUpdated={onServerUpdated}
+            />
+          )}
           {active === 'plantilla' && (
             <PlantillaSection serverName={server.name} />
           )}
           {active === 'expresiones' && (
-            <ComingSoonSection
-              icon={Smile}
-              title="Expresiones"
-              description="Emojis, stickers y otros elementos visuales propios de la comunidad todavía no están disponibles en Zion."
-            />
+            <ExpresionesSection server={server} canEdit={hasPermission('gestionar_servidor')} />
           )}
           {active === 'apps' && (
-            <ComingSoonSection
-              icon={Blocks}
-              title="Apps"
-              description="Integrar bots, webhooks o herramientas de automatización (como AniMechaBot) todavía no está disponible."
-            />
+            <WebhooksSection server={server} canEdit={hasPermission('gestionar_servidor')} />
           )}
           {active === 'moderacion' && (
-            <ComingSoonSection
-              icon={ShieldCheck}
-              title="Moderación"
-              description="Filtros de contenido y reglas de seguridad todavía no están disponibles. El registro de auditoría ya está en la pestaña Auditoría."
+            <VerificacionSection
+              server={server}
+              canEdit={hasPermission('gestionar_servidor')}
+              onUpdated={onServerUpdated}
             />
           )}
           {active === 'auditoria' && (isOwner || hasPermission('ver_registros')) && (

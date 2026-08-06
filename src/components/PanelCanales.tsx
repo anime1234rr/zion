@@ -449,6 +449,10 @@ export function PanelCanales({
       style={{ width }}
     >
       <ResizeHandle edge="right" active={resizing} onPointerDown={handlePointerDown} />
+
+      {server.bannerUrl && (
+        <img src={server.bannerUrl} alt="" className="h-28 w-full shrink-0 object-cover" />
+      )}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button
@@ -569,6 +573,8 @@ export function PanelCanales({
         onOpenChange={setSettingsOpen}
         server={server}
         currentUserId={currentUser.id}
+        backgroundUrl={currentUser.backgroundUrl}
+        backgroundType={currentUser.backgroundType}
         onServerUpdated={(updated) => onServerUpdated?.(updated)}
         onServerDeleted={onServerDeleted}
       />

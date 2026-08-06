@@ -10,9 +10,11 @@
    futuro selector de tema. */
 :root {
   --radius: 0.625rem;
-  --background: #0f1117;
+  --background-solid: #0f1117;
+  --background: var(--background-solid);
   --foreground: #ffffff;
-  --card: #15171f;
+  --card-solid: #15171f;
+  --card: var(--card-solid);
   --card-foreground: #ffffff;
   --popover: #15171f;
   --popover-foreground: #ffffff;
@@ -33,7 +35,8 @@
   --chart-3: #1c1f2a;
   --chart-4: #22c55e;
   --chart-5: #eab308;
-  --sidebar: #090a0f;
+  --sidebar-solid: #090a0f;
+  --sidebar: var(--sidebar-solid);
   --sidebar-foreground: #ffffff;
   --sidebar-primary: #6366f1;
   --sidebar-primary-foreground: #ffffff;
@@ -53,9 +56,11 @@
 }
 
 .light {
-  --background: oklch(1 0 0);
+  --background-solid: oklch(1 0 0);
+  --background: var(--background-solid);
   --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
+  --card-solid: oklch(1 0 0);
+  --card: var(--card-solid);
   --card-foreground: oklch(0.145 0 0);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0 0);
@@ -76,7 +81,8 @@
   --chart-3: oklch(0.439 0 0);
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.985 0 0);
+  --sidebar-solid: oklch(0.985 0 0);
+  --sidebar: var(--sidebar-solid);
   --sidebar-foreground: oklch(0.145 0 0);
   --sidebar-primary: oklch(0.205 0 0);
   --sidebar-primary-foreground: oklch(0.985 0 0);
@@ -88,6 +94,18 @@
   --online: oklch(0.72 0.19 149);
   --idle: oklch(0.8 0.16 78);
   --dnd: oklch(0.63 0.21 25);
+}
+
+.has-app-background {
+  --background: color-mix(in srgb, var(--background-solid) 81%, transparent);
+  --sidebar: color-mix(in srgb, var(--sidebar-solid) 81%, transparent);
+  --card: color-mix(in srgb, var(--card-solid) 81%, transparent);
+}
+
+.surface-opaque {
+  --background: var(--background-solid);
+  --sidebar: var(--sidebar-solid);
+  --card: var(--card-solid);
 }
 
 @theme inline {
@@ -143,6 +161,27 @@ html,
 body,
 #root {
   height: 100%;
+}
+
+:root[data-font-scale='sm'] {
+  font-size: 93.75%;
+}
+
+:root[data-font-scale='lg'] {
+  font-size: 112.5%;
+}
+
+:root[data-font-scale='xl'] {
+  font-size: 125%;
+}
+
+[data-reduce-motion='true'] *,
+[data-reduce-motion='true'] *::before,
+[data-reduce-motion='true'] *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+  scroll-behavior: auto !important;
 }
 
 body {

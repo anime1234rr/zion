@@ -63,6 +63,23 @@ export async function marcarNotificacionLeida(notificacionId?: string): Promise<
   if (error) throw error
 }
 
+export async function crearNotificacionMencion(params: {
+  usuarioId: string
+  servidorId: string
+  titulo: string
+  mensaje: string
+}): Promise<void> {
+  const { error } = await supabase.rpc('crear_notificacion', {
+    p_usuario_id: params.usuarioId,
+    p_servidor_id: params.servidorId,
+    p_tipo: 'mencion',
+    p_titulo: params.titulo,
+    p_mensaje: params.mensaje,
+    p_enlace: null,
+  })
+  if (error) throw error
+}
+
 export async function eliminarNotificacion(notificacionId: string): Promise<void> {
   const { error } = await supabase
     .from('notificaciones')

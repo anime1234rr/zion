@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   Headphones,
   HeadphoneOff,
@@ -6,11 +6,10 @@ import {
   Mic,
   MicOff,
   Settings,
-  Sliders,
 } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
-import { openExternal } from '@/lib/electron-bridge'
+import { checkForUpdates, openExternal } from '@/lib/electron-bridge'
 import { toggleDeafen, toggleMute, useVoiceConnection } from '@/hooks/use-voice-connection'
 import type { ChatUser, UserStatus } from '@/lib/types'
 import {
@@ -30,8 +29,10 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import { ConfigurarPerfilDialog } from '@/components/ConfigurarPerfilDialog'
-import { AudioSettingsDialog } from '@/components/AudioSettingsDialog'
+import {
+  AccountSettingsPanel,
+  type AccountSettingsSectionId,
+} from '@/components/account-settings/AccountSettingsPanel'
 
 const statusColor: Record<UserStatus, string> = {
   online: 'bg-online',
@@ -60,20 +61,37 @@ export function PerfilUsuario({
   onSignOut,
   onProfileUpdated,
 }: PerfilUsuarioProps) {
-  const [profileDialogOpen, setProfileDialogOpen] = useState(false)
-  const [audioSettingsOpen, setAudioSettingsOpen] = useState(false)
+  const [accountSettingsOpen, setAccountSettingsOpen] = useState(false)
+  const [accountSettingsSection, setAccountSettingsSection] =
+    useState<AccountSettingsSectionId>('perfil')
+  const [latestVersion, setLatestVersion] = useState<string | null>(null)
   const { muted, deafened } = useVoiceConnection()
+
+  useEffect(() => {
+    let cancelado = false
+    checkForUpdates()
+      .then((info) => !cancelado && info && setLatestVersion(info.version))
+      .catch(() => {})
+    return () => {
+      cancelado = true
+    }
+  }, [])
+
+  function openAccountSettings(section: AccountSettingsSectionId) {
+    setAccountSettingsSection(section)
+    setAccountSettingsOpen(true)
+  }
 
   return (
     <div className="flex h-[52px] shrink-0 items-center gap-2 border-t border-sidebar-border bg-sidebar px-2">
       <div
         role="button"
         tabIndex={0}
-        onClick={() => setProfileDialogOpen(true)}
+        onClick={() => openAccountSettings('perfil')}
         onKeyDown={(event) => {
           if (event.key === 'Enter' || event.key === ' ') {
             event.preventDefault()
-            setProfileDialogOpen(true)
+            openAccountSettings('perfil')
           }
         }}
         aria-label="Abrir configuración de perfil"
@@ -100,7 +118,7 @@ export function PerfilUsuario({
                   }}
                   className="shrink-0 rounded-sm text-muted-foreground/60 outline-none hover:text-muted-foreground hover:underline focus-visible:ring-1 focus-visible:ring-ring/50"
                 >
-                  · v{__APP_VERSION__}
+                  · v{latestVersion ?? __APP_VERSION__}
                 </button>
               </TooltipTrigger>
               <TooltipContent side="top">Ver novedades en GitHub</TooltipContent>
@@ -170,13 +188,9 @@ export function PerfilUsuario({
             <TooltipContent side="top">Configuración</TooltipContent>
           </Tooltip>
           <DropdownMenuContent align="end" side="top" className="w-48">
-            <DropdownMenuItem onSelect={() => setProfileDialogOpen(true)}>
+            <DropdownMenuItem onSelect={() => openAccountSettings('perfil')}>
               <Settings className="size-4" />
-              Configurar perfil
-            </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => setAudioSettingsOpen(true)}>
-              <Sliders className="size-4" />
-              Voz y video
+              Configuración
             </DropdownMenuItem>
             <DropdownMenuItem variant="destructive" onSelect={onSignOut}>
               <LogOut className="size-4" />
@@ -186,14 +200,13 @@ export function PerfilUsuario({
         </DropdownMenu>
       </div>
 
-      <ConfigurarPerfilDialog
-        open={profileDialogOpen}
-        onOpenChange={setProfileDialogOpen}
-        userId={user.id}
+      <AccountSettingsPanel
+        open={accountSettingsOpen}
+        onOpenChange={setAccountSettingsOpen}
+        initialSection={accountSettingsSection}
+        currentUser={user}
         onProfileUpdated={(updated) => onProfileUpdated?.(updated)}
       />
-
-      <AudioSettingsDialog open={audioSettingsOpen} onOpenChange={setAudioSettingsOpen} />
     </div>
   )
 }

@@ -4,6 +4,7 @@ import './index.css'
 import App from './App.tsx'
 import { AuthProvider } from '@/lib/auth-context'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
+import '@/hooks/use-accessibility-settings'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

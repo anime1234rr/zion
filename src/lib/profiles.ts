@@ -10,8 +10,76 @@ export interface PerfilRow {
   estado: string
   color_banner: string
   banner_url: string | null
+  fondo_url: string | null
+  fondo_tipo: string | null
   creado_at: string
   actualizado_at: string
+}
+
+interface PreferenciasSeguridadRow {
+  notificar_cambio_contrasena: boolean
+  notificar_cambio_email: boolean
+  notificar_metodo_login_vinculado: boolean
+  notificar_metodo_login_eliminado: boolean
+  notificar_mfa_agregado: boolean
+  notificar_mfa_eliminado: boolean
+}
+
+export interface SecurityNotificationPrefs {
+  cambioContrasena: boolean
+  cambioEmail: boolean
+  metodoLoginVinculado: boolean
+  metodoLoginEliminado: boolean
+  mfaAgregado: boolean
+  mfaEliminado: boolean
+}
+
+function mapPreferenciasSeguridad(row: PreferenciasSeguridadRow): SecurityNotificationPrefs {
+  return {
+    cambioContrasena: row.notificar_cambio_contrasena,
+    cambioEmail: row.notificar_cambio_email,
+    metodoLoginVinculado: row.notificar_metodo_login_vinculado,
+    metodoLoginEliminado: row.notificar_metodo_login_eliminado,
+    mfaAgregado: row.notificar_mfa_agregado,
+    mfaEliminado: row.notificar_mfa_eliminado,
+  }
+}
+
+export async function obtenerPreferenciasNotificacionSeguridad(
+  userId: string
+): Promise<SecurityNotificationPrefs> {
+  const { data, error } = await supabase
+    .from('perfiles')
+    .select(
+      'notificar_cambio_contrasena, notificar_cambio_email, notificar_metodo_login_vinculado, notificar_metodo_login_eliminado, notificar_mfa_agregado, notificar_mfa_eliminado'
+    )
+    .eq('id', userId)
+    .single<PreferenciasSeguridadRow>()
+
+  if (error) throw error
+  return mapPreferenciasSeguridad(data)
+}
+
+export async function actualizarPreferenciaNotificacionSeguridad(
+  userId: string,
+  clave: keyof SecurityNotificationPrefs,
+  valor: boolean
+): Promise<void> {
+  const columnaPorClave: Record<keyof SecurityNotificationPrefs, string> = {
+    cambioContrasena: 'notificar_cambio_contrasena',
+    cambioEmail: 'notificar_cambio_email',
+    metodoLoginVinculado: 'notificar_metodo_login_vinculado',
+    metodoLoginEliminado: 'notificar_metodo_login_eliminado',
+    mfaAgregado: 'notificar_mfa_agregado',
+    mfaEliminado: 'notificar_mfa_eliminado',
+  }
+
+  const { error } = await supabase
+    .from('perfiles')
+    .update({ [columnaPorClave[clave]]: valor })
+    .eq('id', userId)
+
+  if (error) throw error
 }
 
 const estadoToUserStatus: Record<string, UserStatus> = {
@@ -42,6 +110,8 @@ export function mapPerfilToChatUser(row: PerfilRow): ChatUser {
     name: row.nombre_completo || row.nombre_usuario,
     avatarUrl: row.avatar_url ?? undefined,
     status: status !== 'offline' && !esPresenciaViva(row.actualizado_at) ? 'offline' : status,
+    backgroundUrl: row.fondo_url ?? undefined,
+    backgroundType: row.fondo_tipo === 'imagen' || row.fondo_tipo === 'video' ? row.fondo_tipo : undefined,
   }
 }
 
@@ -173,4 +243,33 @@ export async function obtenerPerfilPublico(userId: string): Promise<PublicProfil
 
   if (error) throw error
   return mapPerfilToPublicProfile(data)
+}
+
+export interface AppBackground {
+  url: string
+  tipo: 'imagen' | 'video'
+}
+
+export async function obtenerFondoApp(userId: string): Promise<AppBackground | null> {
+  const { data, error } = await supabase
+    .from('perfiles')
+    .select('fondo_url, fondo_tipo')
+    .eq('id', userId)
+    .single<{ fondo_url: string | null; fondo_tipo: string | null }>()
+
+  if (error) throw error
+  if (!data.fondo_url || (data.fondo_tipo !== 'imagen' && data.fondo_tipo !== 'video')) return null
+  return { url: data.fondo_url, tipo: data.fondo_tipo }
+}
+
+export async function actualizarFondoApp(
+  userId: string,
+  fondo: AppBackground | null
+): Promise<void> {
+  const { error } = await supabase
+    .from('perfiles')
+    .update({ fondo_url: fondo?.url ?? null, fondo_tipo: fondo?.tipo ?? null })
+    .eq('id', userId)
+
+  if (error) throw error
 }

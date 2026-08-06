@@ -22,6 +22,7 @@ interface RoleEditorPanelProps {
   role: ServerRole | null
   memberCount: number
   canEdit: boolean
+  nextPosicion: number
   onClose: () => void
   onSaved: (role: ServerRole) => void
   onDeleted: (roleId: string) => void
@@ -41,6 +42,7 @@ function RoleEditorPanelInner({
   role,
   memberCount,
   canEdit,
+  nextPosicion,
   onClose,
   onSaved,
   onDeleted,
@@ -67,7 +69,7 @@ function RoleEditorPanelInner({
     try {
       const saved = role
         ? await actualizarRol(role.id, { nombre, color, permisos })
-        : await crearRol(servidorId, nombre, color, permisos)
+        : await crearRol(servidorId, nombre, color, permisos, nextPosicion)
       onSaved(saved)
     } catch (err) {
       setError(getErrorMessage(err))

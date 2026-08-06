@@ -15,6 +15,7 @@ import {
   Send,
   Smile,
   SmilePlus,
+  Sticker as StickerIcon,
   Square,
   Users,
   Volume2,
@@ -22,16 +23,20 @@ import {
 } from 'lucide-react'
 
 import { buildChannelMessageLink } from '@/lib/deep-links'
+import { renderMessageContent } from '@/lib/render-message-content'
 import { cn, getErrorMessage } from '@/lib/utils'
 import { formatFencedCode, parseFencedCode } from '@/lib/code-fence'
 import { groupMessages } from '@/lib/message-grouping'
 import { CHAT_ADJUNTO_ACCEPT, subirArchivoChat, subirNotaDeVoz } from '@/lib/storage'
 import { alternarReaccionMensaje, desfijarMensaje, fijarMensaje } from '@/lib/messages'
+import { listarMiembrosParaMencion, type MentionableMember } from '@/lib/members'
+import { crearNotificacionMencion } from '@/lib/notifications'
 import { tieneAlgunComandoDeSlash } from '@/lib/slash-commands'
 import { useMessageActions } from '@/hooks/use-message-actions'
 import { useServerPermissions } from '@/hooks/use-server-permissions'
 import { useChannelPermissions } from '@/hooks/use-channel-permissions'
 import { useVoiceMessageRecorder } from '@/hooks/use-voice-message-recorder'
+import { useServerExpresiones } from '@/hooks/use-server-expresiones'
 import type {
   ChannelItem,
   ChannelType,
@@ -43,6 +48,7 @@ import type {
 } from '@/lib/types'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Textarea } from '@/components/ui/textarea'
+import { RichComposerInput, type RichComposerInputHandle } from '@/components/RichComposerInput'
 import {
   Tooltip,
   TooltipContent,
@@ -66,6 +72,8 @@ import { UserProfileCard } from '@/components/UserProfileCard'
 import { PinnedMessagesDialog } from '@/components/PinnedMessagesDialog'
 import { MediaViewerDialog } from '@/components/MediaViewerDialog'
 import { EmojiPicker } from '@/components/EmojiPicker'
+import { EmojiAutocomplete } from '@/components/EmojiAutocomplete'
+import { MentionAutocomplete } from '@/components/MentionAutocomplete'
 import { MessageReactions } from '@/components/MessageReactions'
 import { VoiceMessageRecorder } from '@/components/VoiceMessageRecorder'
 import { VoiceMessagePlayer } from '@/components/VoiceMessagePlayer'
@@ -73,23 +81,7 @@ import { SearchDialog } from '@/components/SearchDialog'
 import { SlashCommandPanel } from '@/components/SlashCommandPanel'
 
 const EVERYONE_MENTION_PATTERN = /(^|[^a-zA-Z0-9_])@(todos|aqu[ií])([^a-zA-Z0-9_]|$)/i
-const GLOBAL_MENTION_SPLIT_PATTERN = /(@(?:todos|aqu[ií])\b)/gi
 const EXTERNAL_LINK_PATTERN = /https?:\/\//i
-
-function renderMessageContent(content: string) {
-  const parts = content.split(GLOBAL_MENTION_SPLIT_PATTERN)
-  if (parts.length === 1) return content
-
-  return parts.map((part, index) =>
-    /^@(todos|aqu[ií])$/i.test(part) ? (
-      <span key={index} className="rounded bg-primary/15 px-1 font-medium text-primary">
-        {part}
-      </span>
-    ) : (
-      <span key={index}>{part}</span>
-    )
-  )
-}
 
 const channelIcon: Record<ChannelType, typeof Hash> = {
   text: Hash,
@@ -144,6 +136,7 @@ interface MessageRowProps {
   canReact: boolean
   serverId: string
   channelId: string
+  customEmojis: Map<string, string>
   onEditMessage: (messageId: string, content: string) => void
   onDeleteMessage: (messageId: string) => void
   onReplyMessage: (message: ChatMessage) => void
@@ -161,6 +154,7 @@ function MessageRow({
   canReact,
   serverId,
   channelId,
+  customEmojis,
   onEditMessage,
   onDeleteMessage,
   onReplyMessage,
@@ -297,7 +291,7 @@ function MessageRow({
             <>
               {message.content && (
                 <p className="text-sm break-words whitespace-pre-wrap text-foreground/90">
-                  {renderMessageContent(message.content)}
+                  {renderMessageContent(message.content, customEmojis)}
                   {message.editedAt && (
                     <span className="ml-1 text-[10px] text-muted-foreground">(editado)</span>
                   )}
@@ -468,7 +462,7 @@ export function ChatPrincipal({
   const [localHighlightId, setLocalHighlightId] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const scrollBottomRef = useRef<HTMLDivElement>(null)
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const textareaRef = useRef<RichComposerInputHandle>(null)
   const dragCounterRef = useRef(0)
   const sendVoiceOnStopRef = useRef(false)
   const HeaderIcon = channelIcon[channel.type]
@@ -481,6 +475,44 @@ export function ChatPrincipal({
   const { canSendMessages, canSendFiles, canReact, canMentionEveryone, canUseExternalLinks } =
     useChannelPermissions(server, channel.id, currentUserId)
   const [composerError, setComposerError] = useState<string | null>(null)
+  const { emojis, stickers } = useServerExpresiones(server.id)
+  const customEmojiList = useMemo(() => [...emojis, ...stickers], [emojis, stickers])
+  const emojiMap = useMemo(
+    () => new Map(customEmojiList.map((e) => [e.nombre, e.url])),
+    [customEmojiList]
+  )
+  const [stickerPopoverOpen, setStickerPopoverOpen] = useState(false)
+  const emojiAutocompleteQuery = useMemo(() => {
+    const match = /(^|\s):([a-zA-Z0-9_]{1,20})$/.exec(draft)
+    return match ? match[2] : null
+  }, [draft])
+
+  function handleSelectAutocompleteEmoji(nombre: string) {
+    setDraft((prev) => prev.replace(/:[a-zA-Z0-9_]{0,20}$/, `:${nombre}: `))
+    textareaRef.current?.focus()
+  }
+
+  const [mentionableMembers, setMentionableMembers] = useState<MentionableMember[]>([])
+
+  useEffect(() => {
+    let cancelado = false
+    listarMiembrosParaMencion(server.id)
+      .then((data) => !cancelado && setMentionableMembers(data))
+      .catch(() => {})
+    return () => {
+      cancelado = true
+    }
+  }, [server.id])
+
+  const mentionAutocompleteQuery = useMemo(() => {
+    const match = /(^|\s)@([a-zA-Z0-9_]{1,32})$/.exec(draft)
+    return match ? match[2] : null
+  }, [draft])
+
+  function handleSelectAutocompleteMention(username: string) {
+    setDraft((prev) => prev.replace(/@[a-zA-Z0-9_]{0,32}$/, `@${username} `))
+    textareaRef.current?.focus()
+  }
 
   const pendingPreviewUrl = useMemo(
     () => (pendingFile ? URL.createObjectURL(pendingFile) : null),
@@ -634,9 +666,35 @@ export function ChatPrincipal({
     }
 
     onSendMessage({ ...parseFencedCode(draft), attachment, respuestaAId: replyingTo?.id })
+    notificarMencionados(draft)
     setDraft('')
     setPendingFile(null)
     setPendingVoiceBlob(null)
+  }
+
+  function notificarMencionados(contenido: string) {
+    const mencionados = new Set<string>()
+    const mentionPattern = /@([a-zA-Z0-9_]{1,32})/g
+    let match: RegExpExecArray | null
+    while ((match = mentionPattern.exec(contenido))) {
+      mencionados.add(match[1].toLowerCase())
+    }
+    if (mencionados.size === 0) return
+
+    const remitente = mentionableMembers.find((m) => m.id === currentUserId)
+    const titulo = `${remitente?.displayName ?? 'Alguien'} te mencionó en #${channel.name}`
+    const preview = contenido.trim().slice(0, 120)
+
+    for (const member of mentionableMembers) {
+      if (member.id === currentUserId) continue
+      if (!mencionados.has(member.username.toLowerCase())) continue
+      crearNotificacionMencion({
+        usuarioId: member.id,
+        servidorId: server.id,
+        titulo,
+        mensaje: preview,
+      }).catch((err) => console.error('No se pudo notificar la mención', err))
+    }
   }
 
   useEffect(() => {
@@ -651,7 +709,7 @@ export function ChatPrincipal({
     submitDraft()
   }
 
-  function handleKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>) {
+  function handleKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault()
       if (voiceRecorder.recording) {
@@ -805,6 +863,7 @@ export function ChatPrincipal({
                     canReact={canReact}
                     serverId={server.id}
                     channelId={channel.id}
+                    customEmojis={emojiMap}
                     onEditMessage={onEditMessage}
                     onDeleteMessage={onDeleteMessage}
                     onReplyMessage={onReplyMessage}
@@ -913,10 +972,24 @@ export function ChatPrincipal({
         )}
         <div
           className={cn(
-            'flex items-end gap-1 rounded-xl border border-input bg-muted/40 px-2 py-1.5',
+            'relative flex items-end gap-1 rounded-xl border border-input bg-muted/40 px-2 py-1.5',
             'focus-within:ring-3 focus-within:ring-ring/50'
           )}
         >
+          {emojiAutocompleteQuery !== null && (
+            <EmojiAutocomplete
+              query={emojiAutocompleteQuery}
+              emojis={customEmojiList}
+              onSelect={handleSelectAutocompleteEmoji}
+            />
+          )}
+          {mentionAutocompleteQuery !== null && (
+            <MentionAutocomplete
+              query={mentionAutocompleteQuery}
+              members={mentionableMembers}
+              onSelect={handleSelectAutocompleteMention}
+            />
+          )}
           <input
             ref={fileInputRef}
             type="file"
@@ -980,11 +1053,11 @@ export function ChatPrincipal({
             </TooltipContent>
           </Tooltip>
 
-          <Textarea
+          <RichComposerInput
             ref={textareaRef}
             value={draft}
-            onChange={(event) => {
-              const value = event.target.value
+            customEmojis={emojiMap}
+            onChange={(value) => {
               if (canUseSlashCommands && value === '/' && draft === '') {
                 setSlashPanelOpen(true)
                 setDraft('')
@@ -998,9 +1071,7 @@ export function ChatPrincipal({
                 ? `Enviar mensaje a #${channel.name}`
                 : 'No tenés permiso para enviar mensajes en este canal'
             }
-            rows={1}
             disabled={!canSendMessages}
-            className="max-h-52 min-h-8 flex-1 resize-none overflow-y-auto border-0 bg-transparent py-1 shadow-none focus-visible:ring-0"
           />
 
           <Popover>
@@ -1020,9 +1091,48 @@ export function ChatPrincipal({
               <TooltipContent side="top">Emoji</TooltipContent>
             </Tooltip>
             <PopoverContent side="top" align="end" className="w-auto p-0">
-              <EmojiPicker onSelect={(emoji) => setDraft((prev) => prev + emoji)} />
+              <EmojiPicker
+                onSelect={(emoji) => setDraft((prev) => prev + emoji)}
+                customEmojis={customEmojiList}
+              />
             </PopoverContent>
           </Popover>
+
+          {stickers.length > 0 && (
+            <Popover open={stickerPopoverOpen} onOpenChange={setStickerPopoverOpen}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <PopoverTrigger asChild>
+                    <button
+                      type="button"
+                      disabled={!canSendMessages}
+                      aria-label="Stickers"
+                      className="flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-40"
+                    >
+                      <StickerIcon className="size-4" />
+                    </button>
+                  </PopoverTrigger>
+                </TooltipTrigger>
+                <TooltipContent side="top">Stickers</TooltipContent>
+              </Tooltip>
+              <PopoverContent side="top" align="end" className="grid w-64 grid-cols-3 gap-2 p-2">
+                {stickers.map((sticker) => (
+                  <button
+                    key={sticker.id}
+                    type="button"
+                    title={sticker.nombre}
+                    onClick={() => {
+                      onSendMessage({ attachment: { url: sticker.url, type: 'image' }, respuestaAId: replyingTo?.id })
+                      setStickerPopoverOpen(false)
+                    }}
+                    className="flex aspect-square items-center justify-center rounded-md outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring/50"
+                  >
+                    <img src={sticker.url} alt={sticker.nombre} className="size-12 object-contain" />
+                  </button>
+                ))}
+              </PopoverContent>
+            </Popover>
+          )}
 
           <button
             type="submit"

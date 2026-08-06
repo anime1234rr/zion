@@ -287,21 +287,38 @@ const CATEGORIES: EmojiCategory[] = [
 interface EmojiPickerProps {
   onSelect: (emoji: string) => void
   className?: string
+  customEmojis?: { nombre: string; url: string }[]
 }
 
-export function EmojiPicker({ onSelect, className }: EmojiPickerProps) {
+export function EmojiPicker({ onSelect, className, customEmojis }: EmojiPickerProps) {
   const [query, setQuery] = useState('')
 
+  const customCategory: EmojiCategory | null = customEmojis?.length
+    ? {
+        label: 'Este servidor',
+        emojis: customEmojis.map((e) => ({ char: `:${e.nombre}:`, keywords: e.nombre })),
+      }
+    : null
+
+  const customUrlPorChar = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const emoji of customEmojis ?? []) map.set(`:${emoji.nombre}:`, emoji.url)
+    return map
+  }, [customEmojis])
+
   const filteredCategories = useMemo(() => {
+    const categories = customCategory ? [customCategory, ...CATEGORIES] : CATEGORIES
     const q = query.trim().toLowerCase()
-    if (!q) return CATEGORIES
-    return CATEGORIES.map((category) => ({
-      ...category,
-      emojis: category.emojis.filter(
-        (emoji) => emoji.keywords.includes(q) || emoji.char === q
-      ),
-    })).filter((category) => category.emojis.length > 0)
-  }, [query])
+    if (!q) return categories
+    return categories
+      .map((category) => ({
+        ...category,
+        emojis: category.emojis.filter(
+          (emoji) => emoji.keywords.includes(q) || emoji.char === q
+        ),
+      }))
+      .filter((category) => category.emojis.length > 0)
+  }, [query, customCategory])
 
   return (
     <div className={cn('flex h-80 w-72 flex-col', className)}>
@@ -332,16 +349,24 @@ export function EmojiPicker({ onSelect, className }: EmojiPickerProps) {
                 {category.label}
               </p>
               <div className="grid grid-cols-8 gap-0.5">
-                {category.emojis.map((emoji) => (
-                  <button
-                    key={emoji.char}
-                    type="button"
-                    onClick={() => onSelect(emoji.char)}
-                    className="flex size-8 items-center justify-center rounded-md text-lg outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring/50"
-                  >
-                    {emoji.char}
-                  </button>
-                ))}
+                {category.emojis.map((emoji) => {
+                  const customUrl = customUrlPorChar.get(emoji.char)
+                  return (
+                    <button
+                      key={emoji.char}
+                      type="button"
+                      title={customUrl ? emoji.char : undefined}
+                      onClick={() => onSelect(emoji.char)}
+                      className="flex size-8 items-center justify-center rounded-md text-lg outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring/50"
+                    >
+                      {customUrl ? (
+                        <img src={customUrl} alt={emoji.char} className="size-5 object-contain" />
+                      ) : (
+                        emoji.char
+                      )}
+                    </button>
+                  )
+                })}
               </div>
             </div>
           ))}
