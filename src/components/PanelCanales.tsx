@@ -21,21 +21,31 @@ import { CSS } from '@dnd-kit/utilities'
 import {
   ChevronDown,
   Code2,
+  Eye,
   FolderPlus,
   GripVertical,
   Hash,
+  Lock,
   Megaphone,
+  MessagesSquare,
   MicOff,
   Plus,
   Settings,
   UserPlus,
   Volume2,
+  X as XIcon,
 } from 'lucide-react'
 
 import { cn, getErrorMessage } from '@/lib/utils'
 import { useResizablePanel } from '@/hooks/use-resizable-panel'
 import { useServerPermissions } from '@/hooks/use-server-permissions'
 import { useVoiceConnection } from '@/hooks/use-voice-connection'
+import {
+  isChannelRestricted,
+  ACCESO_DENEGADO,
+  resolvePreviewPermission,
+  type ChannelPreviewPermissions,
+} from '@/hooks/use-role-preview'
 import {
   UNCATEGORIZED_ID,
   reordenarCanales,
@@ -46,6 +56,7 @@ import {
   suscribirseAEstadosVoz,
   type VoiceParticipant,
 } from '@/lib/voice'
+import type { ServerRole } from '@/lib/members'
 import type { ChannelCategory, ChannelItem, ChannelType, ChatUser, ServerItem } from '@/lib/types'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -62,6 +73,7 @@ import { ServerSettingsPanel } from '@/components/server-settings/ServerSettings
 import { InvitarDialog } from '@/components/InvitarDialog'
 import { CrearCanalDialog } from '@/components/CrearCanalDialog'
 import { CrearCategoriaDialog } from '@/components/CrearCategoriaDialog'
+import { CategorySettingsDialog } from '@/components/CategorySettingsDialog'
 import { ChannelSettingsDialog } from '@/components/ChannelSettingsDialog'
 
 const channelIcon: Record<ChannelType, typeof Hash> = {
@@ -69,6 +81,7 @@ const channelIcon: Record<ChannelType, typeof Hash> = {
   announcement: Megaphone,
   voice: Volume2,
   code: Code2,
+  forum: MessagesSquare,
 }
 
 function findChannelLocation(cats: ChannelCategory[], channelId: string) {
@@ -85,9 +98,10 @@ interface ChannelRowProps {
   canManage: boolean
   onSelect: () => void
   onEdit: () => void
+  restricted?: boolean
 }
 
-function ChannelRowContent({ channel, active, canManage, onSelect, onEdit }: ChannelRowProps) {
+function ChannelRowContent({ channel, active, canManage, onSelect, onEdit, restricted }: ChannelRowProps) {
   const Icon = channelIcon[channel.type]
   return (
     <>
@@ -95,14 +109,17 @@ function ChannelRowContent({ channel, active, canManage, onSelect, onEdit }: Cha
         type="button"
         onClick={onSelect}
         aria-current={active}
+        aria-disabled={restricted}
         className={cn(
           'flex min-w-0 flex-1 items-center gap-1.5 rounded-md px-2 py-1.5 text-sm text-muted-foreground outline-none',
           'hover:text-sidebar-accent-foreground focus-visible:ring-3 focus-visible:ring-ring/50',
-          active && 'font-medium text-sidebar-accent-foreground'
+          active && 'font-medium text-sidebar-accent-foreground',
+          restricted && 'cursor-not-allowed opacity-45 hover:text-muted-foreground'
         )}
       >
         <Icon className="size-4 shrink-0 text-muted-foreground group-hover/channel:text-sidebar-accent-foreground" />
         <span className="truncate">{channel.name}</span>
+        {restricted && <Lock className="size-3 shrink-0 text-muted-foreground" />}
         {channel.unread && !active && (
           <span className="ml-auto size-1.5 shrink-0 rounded-full bg-foreground" />
         )}
@@ -196,6 +213,7 @@ function CategoryDropZone({
   voiceRoster,
   connectedVoiceChannelId,
   speakingUserIds,
+  previewPermissionsByChannel,
 }: {
   category: ChannelCategory
   activeChannelId: string
@@ -205,6 +223,7 @@ function CategoryDropZone({
   voiceRoster: Record<string, VoiceParticipant[]>
   connectedVoiceChannelId: string | null
   speakingUserIds: Set<string>
+  previewPermissionsByChannel?: Record<string, ChannelPreviewPermissions>
 }) {
   const { setNodeRef } = useDroppable({ id: category.id, data: { type: 'category' } })
 
@@ -216,6 +235,8 @@ function CategoryDropZone({
       <ul ref={setNodeRef} className="mt-0.5 flex min-h-2 flex-col gap-0.5">
         {category.channels.map((channel) => {
           const participants = channel.type === 'voice' ? voiceRoster[channel.id] : undefined
+          const previewPermissions = previewPermissionsByChannel?.[channel.id]
+          const restricted = previewPermissions ? isChannelRestricted(previewPermissions) : false
           return (
             <SortableChannelRow
               key={channel.id}
@@ -223,8 +244,9 @@ function CategoryDropZone({
               categoryId={category.id}
               active={channel.id === activeChannelId}
               canManage={canManage}
-              onSelect={() => onSelectChannel(channel.id)}
+              onSelect={restricted ? () => {} : () => onSelectChannel(channel.id)}
               onEdit={() => onEditChannel(channel)}
+              restricted={restricted}
               footer={
                 participants && participants.length > 0 ? (
                   <VoiceChannelMembers
@@ -245,6 +267,11 @@ function CategoryDropZone({
 
 const EMPTY_SPEAKING_SET = new Set<string>()
 
+export interface RolePreviewData {
+  loading: boolean
+  permissionsByChannel: Record<string, ChannelPreviewPermissions>
+}
+
 interface PanelCanalesProps {
   server: ServerItem
   categories: ChannelCategory[]
@@ -258,6 +285,10 @@ interface PanelCanalesProps {
   onChannelCreated?: () => void
   onChannelUpdated?: () => void
   onChannelDeleted?: (channelId: string) => void
+  previewRole?: ServerRole | null
+  rolePreview?: RolePreviewData
+  onPreviewAsRole?: (role: ServerRole) => void
+  onExitPreview?: () => void
 }
 
 export function PanelCanales({
@@ -273,13 +304,22 @@ export function PanelCanales({
   onChannelCreated,
   onChannelUpdated,
   onChannelDeleted,
+  previewRole,
+  rolePreview,
+  onPreviewAsRole,
+  onExitPreview,
 }: PanelCanalesProps) {
+  const preview = rolePreview ?? { loading: false, permissionsByChannel: {} }
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [inviteOpen, setInviteOpen] = useState(false)
-  const [createChannelOpen, setCreateChannelOpen] = useState(false)
+  const [createChannelTarget, setCreateChannelTarget] = useState<{
+    categoriaId: string | null
+    posicion: number
+  } | null>(null)
   const [createCategoryOpen, setCreateCategoryOpen] = useState(false)
   const [editingChannel, setEditingChannel] = useState<ChannelItem | null>(null)
+  const [editingCategory, setEditingCategory] = useState<ChannelCategory | null>(null)
   const [localCategories, setLocalCategories] = useState(categories)
   const [activeDragChannel, setActiveDragChannel] = useState<ChannelItem | null>(null)
   const [reorderError, setReorderError] = useState<string | null>(null)
@@ -292,7 +332,11 @@ export function PanelCanales({
     maxWidth: 400,
     edge: 'right',
   })
-  const { hasPermission } = useServerPermissions(server, currentUser.id)
+  const { hasPermission: realHasPermission } = useServerPermissions(server, currentUser.id)
+  const isPreviewing = Boolean(previewRole)
+  const hasPermission = isPreviewing
+    ? (permiso: string) => resolvePreviewPermission(previewRole, permiso)
+    : realHasPermission
   const puedeGestionarServidor =
     hasPermission('gestionar_servidor') ||
     hasPermission('gestionar_canales') ||
@@ -342,6 +386,24 @@ export function PanelCanales({
     if (isDraggingRef.current) return
     setLocalCategories(categories)
   }, [categories])
+
+  useEffect(() => {
+    if (!previewRole || preview.loading) return
+
+    const channels = localCategories.flatMap((category) => category.channels)
+    const activeChannel = channels.find((channel) => channel.id === activeChannelId)
+    const activeRestricted =
+      !activeChannel ||
+      isChannelRestricted(preview.permissionsByChannel[activeChannel.id] ?? ACCESO_DENEGADO)
+
+    if (!activeRestricted) return
+
+    const accesible = channels.find(
+      (channel) => !isChannelRestricted(preview.permissionsByChannel[channel.id] ?? ACCESO_DENEGADO)
+    )
+
+    if (accesible) onSelectChannel(accesible.id)
+  }, [previewRole, preview.loading, preview.permissionsByChannel, activeChannelId, localCategories, onSelectChannel])
 
   function toggleCategory(categoryId: string) {
     setCollapsed((prev) => {
@@ -479,7 +541,9 @@ export function PanelCanales({
           {puedeGestionarCanales && (
             <>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onSelect={() => setCreateChannelOpen(true)}>
+              <DropdownMenuItem
+                onSelect={() => setCreateChannelTarget({ categoriaId: null, posicion: 0 })}
+              >
                 <Plus className="size-4" />
                 Crear canal
               </DropdownMenuItem>
@@ -491,6 +555,29 @@ export function PanelCanales({
           )}
         </DropdownMenuContent>
       </DropdownMenu>
+
+      {previewRole && (
+        <div
+          className="flex items-center gap-2 border-b border-sidebar-border px-3 py-2"
+          style={{ backgroundColor: `${previewRole.color ?? '#9ca3af'}1a` }}
+        >
+          <Eye className="size-3.5 shrink-0" style={{ color: previewRole.color ?? undefined }} />
+          <p className="min-w-0 flex-1 truncate text-xs text-sidebar-foreground">
+            Viendo como{' '}
+            <span className="font-semibold" style={{ color: previewRole.color ?? undefined }}>
+              {previewRole.nombre}
+            </span>
+          </p>
+          <button
+            type="button"
+            onClick={onExitPreview}
+            aria-label="Salir de la vista previa"
+            className="flex size-5 shrink-0 items-center justify-center rounded-full text-muted-foreground outline-none hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
+          >
+            <XIcon className="size-3.5" />
+          </button>
+        </div>
+      )}
 
       {reorderError && (
         <p className="border-b border-sidebar-border px-3 py-1.5 text-xs text-destructive" role="alert">
@@ -514,20 +601,47 @@ export function PanelCanales({
               return (
                 <div key={category.id}>
                   {!isUncategorized && (
-                    <button
-                      type="button"
-                      onClick={() => toggleCategory(category.id)}
-                      aria-expanded={!isCollapsed}
-                      className="flex w-full items-center gap-1 rounded-md px-1.5 py-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase outline-none hover:text-sidebar-foreground focus-visible:ring-3 focus-visible:ring-ring/50"
-                    >
-                      <ChevronDown
-                        className={cn(
-                          'size-3 shrink-0 transition-transform duration-150',
-                          isCollapsed && '-rotate-90'
-                        )}
-                      />
-                      <span className="truncate">{category.name}</span>
-                    </button>
+                    <div className="group/category flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => toggleCategory(category.id)}
+                        aria-expanded={!isCollapsed}
+                        className="flex min-w-0 flex-1 items-center gap-1 rounded-md px-1.5 py-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase outline-none hover:text-sidebar-foreground focus-visible:ring-3 focus-visible:ring-ring/50"
+                      >
+                        <ChevronDown
+                          className={cn(
+                            'size-3 shrink-0 transition-transform duration-150',
+                            isCollapsed && '-rotate-90'
+                          )}
+                        />
+                        <span className="truncate">{category.name}</span>
+                      </button>
+                      {puedeGestionarCanales && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setCreateChannelTarget({
+                              categoriaId: category.id,
+                              posicion: category.channels.length,
+                            })
+                          }
+                          aria-label={`Crear canal en ${category.name}`}
+                          className="hidden shrink-0 rounded-md p-1 text-muted-foreground outline-none hover:text-sidebar-accent-foreground focus-visible:ring-3 focus-visible:ring-ring/50 group-hover/category:block"
+                        >
+                          <Plus className="size-3.5" />
+                        </button>
+                      )}
+                      {puedeGestionarCanales && (
+                        <button
+                          type="button"
+                          onClick={() => setEditingCategory(category)}
+                          aria-label={`Editar categoría ${category.name}`}
+                          className="hidden shrink-0 rounded-md p-1 text-muted-foreground outline-none hover:text-sidebar-accent-foreground focus-visible:ring-3 focus-visible:ring-ring/50 group-hover/category:block"
+                        >
+                          <Settings className="size-3.5" />
+                        </button>
+                      )}
+                    </div>
                   )}
 
                   {(isUncategorized || !isCollapsed) && (
@@ -540,6 +654,9 @@ export function PanelCanales({
                       voiceRoster={voiceRoster}
                       connectedVoiceChannelId={connectedChannelId}
                       speakingUserIds={speakingUserIds}
+                      previewPermissionsByChannel={
+                        previewRole && !preview.loading ? preview.permissionsByChannel : undefined
+                      }
                     />
                   )}
                 </div>
@@ -577,6 +694,10 @@ export function PanelCanales({
         backgroundType={currentUser.backgroundType}
         onServerUpdated={(updated) => onServerUpdated?.(updated)}
         onServerDeleted={onServerDeleted}
+        onPreviewAsRole={(role) => {
+          setSettingsOpen(false)
+          onPreviewAsRole?.(role)
+        }}
       />
 
       <InvitarDialog
@@ -587,9 +708,13 @@ export function PanelCanales({
       />
 
       <CrearCanalDialog
-        open={createChannelOpen}
-        onOpenChange={setCreateChannelOpen}
+        open={createChannelTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setCreateChannelTarget(null)
+        }}
         servidorId={server.id}
+        categoriaId={createChannelTarget?.categoriaId}
+        posicion={createChannelTarget?.posicion}
         onCreated={() => onChannelCreated?.()}
       />
 
@@ -607,14 +732,28 @@ export function PanelCanales({
         }}
         servidorId={server.id}
         channel={editingChannel}
-        onUpdated={() => {
+        onUpdated={(updated) => {
           onChannelUpdated?.()
-          setEditingChannel(null)
+          setEditingChannel(updated)
         }}
         onDeleted={(channelId) => {
           onChannelDeleted?.(channelId)
           setEditingChannel(null)
         }}
+      />
+
+      <CategorySettingsDialog
+        open={editingCategory !== null}
+        onOpenChange={(open) => {
+          if (!open) setEditingCategory(null)
+        }}
+        servidorId={server.id}
+        category={editingCategory}
+        onDeleted={(categoryId) => {
+          onChannelDeleted?.(categoryId)
+          setEditingCategory(null)
+        }}
+        onChannelCreated={() => onChannelCreated?.()}
       />
     </aside>
   )

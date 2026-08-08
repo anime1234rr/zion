@@ -5,6 +5,7 @@ import {
   actualizarCanal,
   actualizarPermisosDeCanal,
   eliminarCanal,
+  eliminarPermisosDeCanal,
   listarPermisosDeCanal,
   PERMISOS_CANAL_CONOCIDOS,
   type ChannelRolePermisos,
@@ -213,23 +214,31 @@ function ChannelSettingsForm({
       )}
 
       {tab === 'permisos' && (
-        <CanalPermisosEditor servidorId={servidorId} canalId={channel.id} canalTipo={channel.type} />
+        <CanalPermisosEditor
+          servidorId={servidorId}
+          canalId={channel.id}
+          canalTipo={channel.type}
+          categoriaId={channel.categoryId}
+        />
       )}
     </>
   )
 }
 
-function CanalPermisosEditor({
+export function CanalPermisosEditor({
   servidorId,
   canalId,
   canalTipo,
+  categoriaId,
 }: {
   servidorId: string
   canalId: string
-  canalTipo: ChannelType
+  canalTipo: ChannelType | 'categoria'
+  categoriaId?: string | null
 }) {
   const [roles, setRoles] = useState<ServerRole[]>([])
-  const [permisos, setPermisos] = useState<ChannelRolePermisos[]>([])
+  const [permisosCanal, setPermisosCanal] = useState<ChannelRolePermisos[]>([])
+  const [permisosCategoria, setPermisosCategoria] = useState<ChannelRolePermisos[]>([])
   const [selectedRoleId, setSelectedRoleId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -237,11 +246,16 @@ function CanalPermisosEditor({
 
   useEffect(() => {
     let cancelado = false
-    Promise.all([listarRolesDeServidor(servidorId), listarPermisosDeCanal(canalId)])
-      .then(([r, p]) => {
+    Promise.all([
+      listarRolesDeServidor(servidorId),
+      listarPermisosDeCanal(canalId),
+      categoriaId ? listarPermisosDeCanal(categoriaId) : Promise.resolve([]),
+    ])
+      .then(([r, p, pc]) => {
         if (cancelado) return
         setRoles(r)
-        setPermisos(p)
+        setPermisosCanal(p)
+        setPermisosCategoria(pc)
         setSelectedRoleId((prev) => prev ?? r[0]?.id ?? null)
       })
       .catch((err) => !cancelado && setError(getErrorMessage(err)))
@@ -249,19 +263,21 @@ function CanalPermisosEditor({
     return () => {
       cancelado = true
     }
-  }, [servidorId, canalId])
+  }, [servidorId, canalId, categoriaId])
 
-  const permisosDelRolSeleccionado =
-    permisos.find((p) => p.rolId === selectedRoleId)?.permisos ?? {}
+  const filaPropia = permisosCanal.find((p) => p.rolId === selectedRoleId)
+  const tieneFilaPropia = filaPropia !== undefined
+  const propiosDelRol = filaPropia?.permisos ?? {}
+  const heredadosDelRol =
+    permisosCategoria.find((p) => p.rolId === selectedRoleId)?.permisos ?? {}
 
   async function handleToggle(permisoKey: string, checked: boolean) {
     if (!selectedRoleId) return
     setActionError(null)
-    const anterior = permisos
-    const actual = permisosDelRolSeleccionado
-    const siguiente = { ...actual, [permisoKey]: checked }
+    const anterior = permisosCanal
+    const siguiente = { ...propiosDelRol, [permisoKey]: checked }
 
-    setPermisos((prev) => {
+    setPermisosCanal((prev) => {
       const existe = prev.some((p) => p.rolId === selectedRoleId)
       if (existe) {
         return prev.map((p) =>
@@ -276,11 +292,25 @@ function CanalPermisosEditor({
 
     try {
       const guardado = await actualizarPermisosDeCanal(canalId, selectedRoleId, siguiente)
-      setPermisos((prev) =>
+      setPermisosCanal((prev) =>
         prev.map((p) => (p.rolId === selectedRoleId ? guardado : p))
       )
     } catch (err) {
-      setPermisos(anterior)
+      setPermisosCanal(anterior)
+      setActionError(getErrorMessage(err))
+    }
+  }
+
+  async function handleRestablecer() {
+    if (!selectedRoleId) return
+    setActionError(null)
+    const anterior = permisosCanal
+    setPermisosCanal((prev) => prev.filter((p) => p.rolId !== selectedRoleId))
+
+    try {
+      await eliminarPermisosDeCanal(canalId, selectedRoleId)
+    } catch (err) {
+      setPermisosCanal(anterior)
       setActionError(getErrorMessage(err))
     }
   }
@@ -327,10 +357,27 @@ function CanalPermisosEditor({
       </div>
 
       <div className="flex flex-col gap-3">
-        <p className="text-xs text-muted-foreground/70">
-          Sin una excepción explícita acá, un rol hereda el comportamiento por
-          defecto (permitido) en este canal.
-        </p>
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-xs text-muted-foreground/70">
+            {canalTipo === 'categoria'
+              ? 'Sin una excepción explícita acá, un rol no tiene este permiso en esta categoría. Los canales heredan lo que configures acá salvo que lo personalicen.'
+              : categoriaId
+                ? 'Al tocar cualquier interruptor, este canal deja de heredar de la categoría para este rol: todo lo que no actives acá queda denegado.'
+                : 'Sin una excepción explícita acá, un rol no tiene este permiso en este canal.'}
+          </p>
+          {categoriaId && tieneFilaPropia && (
+            <Button type="button" variant="outline" size="sm" onClick={handleRestablecer}>
+              Restablecer a la categoría
+            </Button>
+          )}
+        </div>
+
+        {categoriaId && !tieneFilaPropia && canalTipo !== 'categoria' && (
+          <p className="text-xs text-muted-foreground/60">
+            Este canal hereda todos los permisos de su categoría. Activá cualquier interruptor
+            para personalizarlo.
+          </p>
+        )}
 
         {actionError && (
           <p className="text-sm text-destructive" role="alert">
@@ -340,16 +387,22 @@ function CanalPermisosEditor({
 
         <div className="flex flex-col gap-2">
           {PERMISOS_CANAL_CONOCIDOS.filter(
-            (permiso) => permiso.enforced && permiso.tipos.includes(canalTipo)
-          ).map((permiso) => (
-            <div key={permiso.key} className="flex items-center justify-between gap-3">
-              <span className="text-sm text-muted-foreground">{permiso.label}</span>
-              <Switch
-                checked={Boolean(permisosDelRolSeleccionado[permiso.key])}
-                onCheckedChange={(checked) => handleToggle(permiso.key, checked)}
-              />
-            </div>
-          ))}
+            (permiso) =>
+              permiso.enforced && (canalTipo === 'categoria' || permiso.tipos.includes(canalTipo))
+          ).map((permiso) => {
+            const efectivo = tieneFilaPropia
+              ? Boolean(propiosDelRol[permiso.key])
+              : Boolean(heredadosDelRol[permiso.key])
+            return (
+              <div key={permiso.key} className="flex items-center justify-between gap-3">
+                <span className="text-sm text-muted-foreground">{permiso.label}</span>
+                <Switch
+                  checked={efectivo}
+                  onCheckedChange={(checked) => handleToggle(permiso.key, checked)}
+                />
+              </div>
+            )
+          })}
         </div>
       </div>
     </div>

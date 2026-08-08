@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { useAuth } from '@/hooks/use-auth'
 import { useSystemStatus } from '@/hooks/use-system-status'
+import { useChannelAccess } from '@/hooks/use-channel-access'
+import { useRolePreview } from '@/hooks/use-role-preview'
 import { cn } from '@/lib/utils'
 import { obtenerPerfil } from '@/lib/profiles'
 import {
@@ -36,6 +38,7 @@ import type {
   ReplyPreview,
   ServerItem,
 } from '@/lib/types'
+import type { ServerRole } from '@/lib/members'
 
 import { AuthScreen } from '@/components/AuthScreen'
 import { MaintenanceScreen } from '@/components/MaintenanceScreen'
@@ -44,6 +47,7 @@ import { SidebarServidores } from '@/components/SidebarServidores'
 import { PanelCanales } from '@/components/PanelCanales'
 import { ChatPrincipal } from '@/components/ChatPrincipal'
 import { VoiceChannelView } from '@/components/VoiceChannelView'
+import { ForumChannelView } from '@/components/forum/ForumChannelView'
 import { VoiceFloatingPanel } from '@/components/VoiceFloatingPanel'
 import { WelcomeDashboard } from '@/components/WelcomeDashboard'
 import { PanelMiembros } from '@/components/PanelMiembros'
@@ -95,11 +99,13 @@ function AppShell({ userId }: { userId: string }) {
     sourceLabel: string
   } | null>(null)
   const [highlightMessageId, setHighlightMessageId] = useState<string | null>(null)
+  const [previewRole, setPreviewRole] = useState<ServerRole | null>(null)
   const { connectedChannelId } = useVoiceConnection()
 
   function handleSelectServer(serverId: string) {
     setView('server')
     setActiveServerId(serverId)
+    setPreviewRole(null)
   }
 
   function handleReturnToVoiceChannel(serverId: string, channelId: string) {
@@ -257,17 +263,45 @@ function AppShell({ userId }: { userId: string }) {
     }
   }, [activeServerId])
 
+  const activeServer = servers.find((s) => s.id === activeServerId)
+
+  const hiddenChannelIds = useChannelAccess(activeServer ?? null, categories, userId)
+
+  const visibleCategories = useMemo(
+    () =>
+      categories.map((category) => ({
+        ...category,
+        channels: category.channels.filter((channel) => !hiddenChannelIds.has(channel.id)),
+      })),
+    [categories, hiddenChannelIds]
+  )
+
+  const visibleChannels = useMemo(
+    () => visibleCategories.flatMap((category) => category.channels),
+    [visibleCategories]
+  )
+
+  const effectiveChannelId =
+    activeChannelId && visibleChannels.some((channel) => channel.id === activeChannelId)
+      ? activeChannelId
+      : (visibleChannels[0]?.id ?? null)
+
+  const rolePreview = useRolePreview(activeServer?.id ?? '', previewRole)
+  const activePreviewPermissions = effectiveChannelId
+    ? rolePreview.permissionsByChannel[effectiveChannelId]
+    : undefined
+
   useEffect(() => {
-    if (!activeChannelId) return
+    if (!effectiveChannelId) return
 
     let cancelado = false
-    listarMensajes(activeChannelId)
+    listarMensajes(effectiveChannelId)
       .then((data) => {
         if (!cancelado) setMessages(data)
       })
       .catch((err) => console.error('No se pudieron cargar los mensajes', err))
 
-    const unsubscribe = suscribirseACanal(activeChannelId, {
+    const unsubscribe = suscribirseACanal(effectiveChannelId, {
       onNuevoMensaje: (mensaje) => {
         setMessages((prev) =>
           prev.some((m) => m.id === mensaje.id) ? prev : [...prev, mensaje]
@@ -285,7 +319,7 @@ function AppShell({ userId }: { userId: string }) {
       cancelado = true
       unsubscribe()
     }
-  }, [activeChannelId])
+  }, [effectiveChannelId])
 
   async function handleChannelCreated() {
     if (!activeServerId) return
@@ -318,11 +352,7 @@ function AppShell({ userId }: { userId: string }) {
     }
   }
 
-  const activeServer = servers.find((s) => s.id === activeServerId)
-
-  const activeChannel = categories
-    .flatMap((category) => category.channels)
-    .find((channel) => channel.id === activeChannelId)
+  const activeChannel = visibleChannels.find((channel) => channel.id === effectiveChannelId)
 
   const handleSendMessage = useCallback(
     async (message: {
@@ -331,9 +361,9 @@ function AppShell({ userId }: { userId: string }) {
       attachment?: ChatAttachment
       respuestaAId?: string
     }) => {
-      if (!activeChannelId) return
+      if (!effectiveChannelId) return
       try {
-        const nuevo = await enviarMensaje(activeChannelId, userId, message)
+        const nuevo = await enviarMensaje(effectiveChannelId, userId, message)
         setMessages((prev) =>
           prev.some((m) => m.id === nuevo.id) ? prev : [...prev, nuevo]
         )
@@ -342,7 +372,7 @@ function AppShell({ userId }: { userId: string }) {
         console.error('No se pudo enviar el mensaje', err)
       }
     },
-    [activeChannelId, userId]
+    [effectiveChannelId, userId]
   )
 
   const handleEditMessage = useCallback(async (messageId: string, content: string) => {
@@ -406,8 +436,8 @@ function AppShell({ userId }: { userId: string }) {
           {activeServer && profile ? (
             <PanelCanales
               server={activeServer}
-              categories={categories}
-              activeChannelId={activeChannelId ?? ''}
+              categories={visibleCategories}
+              activeChannelId={effectiveChannelId ?? ''}
               onSelectChannel={setActiveChannelId}
               currentUser={profile}
               onSignOut={signOut}
@@ -422,11 +452,29 @@ function AppShell({ userId }: { userId: string }) {
               onChannelCreated={handleChannelCreated}
               onChannelUpdated={handleChannelUpdated}
               onChannelDeleted={handleChannelDeleted}
+              previewRole={previewRole}
+              rolePreview={rolePreview}
+              onPreviewAsRole={setPreviewRole}
+              onExitPreview={() => setPreviewRole(null)}
             />
           ) : null}
 
           {activeChannel && activeServer && activeChannel.type === 'voice' ? (
-            <VoiceChannelView channel={activeChannel} server={activeServer} currentUserId={userId} />
+            <VoiceChannelView
+              channel={activeChannel}
+              server={activeServer}
+              currentUserId={userId}
+              previewRole={previewRole}
+              previewPermissions={activePreviewPermissions}
+              previewLoading={rolePreview.loading}
+            />
+          ) : activeChannel && activeServer && activeChannel.type === 'forum' ? (
+            <ForumChannelView
+              key={activeChannel.id}
+              channel={activeChannel}
+              server={activeServer}
+              currentUserId={userId}
+            />
           ) : activeChannel && activeServer ? (
             <ChatPrincipal
               channel={activeChannel}
@@ -454,6 +502,9 @@ function AppShell({ userId }: { userId: string }) {
                 setActiveChannelId(channelId)
                 setHighlightMessageId(messageId)
               }}
+              previewRole={previewRole}
+              previewPermissions={activePreviewPermissions}
+              previewLoading={rolePreview.loading}
             />
           ) : servers.length === 0 ? (
             <WelcomeDashboard

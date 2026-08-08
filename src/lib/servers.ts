@@ -27,6 +27,7 @@ export const tipoCanalToChannelType: Record<string, ChannelType> = {
   voz: 'voice',
   codigo: 'code',
   anuncios: 'announcement',
+  foro: 'forum',
 }
 
 const NIVELES_VERIFICACION: ServerVerificationLevel[] = ['ninguno', 'bajo', 'medio', 'alto']

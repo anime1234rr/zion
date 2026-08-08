@@ -35,6 +35,7 @@ const OWNER_SYNTHETIC_ROLE_ID = 'owner'
 interface RolesPermisosSectionProps {
   server: ServerItem
   currentUserId: string
+  onPreviewAsRole?: (role: ServerRole) => void
 }
 
 type Selection = string | 'new' | typeof OWNER_SYNTHETIC_ROLE_ID | null
@@ -98,7 +99,11 @@ function SortableRoleRow({
   )
 }
 
-export function RolesPermisosSection({ server, currentUserId }: RolesPermisosSectionProps) {
+export function RolesPermisosSection({
+  server,
+  currentUserId,
+  onPreviewAsRole,
+}: RolesPermisosSectionProps) {
   const { isOwner, hasPermission } = useServerPermissions(server, currentUserId)
   const canManageRoles = isOwner || hasPermission('gestionar_roles')
 
@@ -305,6 +310,7 @@ export function RolesPermisosSection({ server, currentUserId }: RolesPermisosSec
                 onClose={() => setSelectedRoleId(null)}
                 onSaved={handleRoleSaved}
                 onDeleted={handleRoleDeleted}
+                onPreviewAsRole={onPreviewAsRole}
               />
             ) : (
               <div className="flex h-full flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-border text-center">

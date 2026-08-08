@@ -7,6 +7,7 @@ import {
   MicOff,
   MonitorOff,
   MonitorUp,
+  ShieldCheck,
   Sliders,
   Video,
   VideoOff,
@@ -26,6 +27,8 @@ import {
   useVoiceConnection,
 } from '@/hooks/use-voice-connection'
 import { useChannelPermissions } from '@/hooks/use-channel-permissions'
+import { ACCESO_DENEGADO, type ChannelPreviewPermissions } from '@/hooks/use-role-preview'
+import type { ServerRole } from '@/lib/members'
 import type { ChannelItem, ServerItem } from '@/lib/types'
 import { Avatar, AvatarBadge, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -37,6 +40,9 @@ interface VoiceChannelViewProps {
   channel: ChannelItem
   server: ServerItem
   currentUserId: string
+  previewRole?: ServerRole | null
+  previewPermissions?: ChannelPreviewPermissions
+  previewLoading?: boolean
 }
 
 interface Tile {
@@ -50,7 +56,14 @@ interface Tile {
   screenStream?: MediaStream
 }
 
-export function VoiceChannelView({ channel, server, currentUserId }: VoiceChannelViewProps) {
+export function VoiceChannelView({
+  channel,
+  server,
+  currentUserId,
+  previewRole,
+  previewPermissions,
+  previewLoading,
+}: VoiceChannelViewProps) {
   const {
     connectedChannelId,
     connecting,
@@ -68,22 +81,24 @@ export function VoiceChannelView({ channel, server, currentUserId }: VoiceChanne
   const [pickerOpen, setPickerOpen] = useState(false)
   const [audioSettingsOpen, setAudioSettingsOpen] = useState(false)
   const [forceMuteError, setForceMuteError] = useState<string | null>(null)
-  const {
-    loading: permissionsLoading,
-    canForceMuteVoice,
-    canConnectVoice,
-    canSpeakVoice,
-  } = useChannelPermissions(server, channel.id, currentUserId)
+  const realChannelPermissions = useChannelPermissions(server, channel.id, currentUserId)
+  const isPreviewing = Boolean(previewRole)
+  const effectivePermissions: ChannelPreviewPermissions = isPreviewing
+    ? (previewPermissions ?? ACCESO_DENEGADO)
+    : realChannelPermissions
+  const permissionsLoading = isPreviewing ? Boolean(previewLoading) : realChannelPermissions.loading
+  const { canView, canConnectVoice, canSpeakVoice } = effectivePermissions
+  const canForceMuteVoice = isPreviewing ? false : realChannelPermissions.canForceMuteVoice
 
   const isConnectedHere = connectedChannelId === channel.id
 
   useEffect(() => {
-    if (permissionsLoading || !canConnectVoice) return
+    if (isPreviewing || permissionsLoading || !canConnectVoice) return
     if (connectedChannelId !== channel.id) {
       joinVoiceChannel(channel.id, currentUserId, server.id, channel.name)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [channel.id, currentUserId, server.id, permissionsLoading, canConnectVoice])
+  }, [channel.id, currentUserId, server.id, permissionsLoading, canConnectVoice, isPreviewing])
 
   const tiles: Tile[] = participants.map((participant) => {
     const isSelf = participant.user.id === currentUserId
@@ -123,6 +138,15 @@ export function VoiceChannelView({ channel, server, currentUserId }: VoiceChanne
     }
   }
 
+  if (!permissionsLoading && !canView) {
+    return (
+      <section className="flex h-full min-w-0 flex-1 flex-col items-center justify-center gap-2 bg-background text-center">
+        <ShieldCheck className="size-8 text-muted-foreground" />
+        <p className="text-sm text-muted-foreground">No tenés permiso para ver este canal.</p>
+      </section>
+    )
+  }
+
   return (
     <section className="flex h-full min-w-0 flex-1 flex-col bg-background">
       <header className="flex h-12 shrink-0 items-center gap-2 border-b border-border px-4">
@@ -139,7 +163,14 @@ export function VoiceChannelView({ channel, server, currentUserId }: VoiceChanne
           </p>
         )}
 
-        {canConnectVoice && connecting && !isConnectedHere && (
+        {isPreviewing && !permissionsLoading && canConnectVoice && !isConnectedHere && (
+          <p className="max-w-sm text-center text-sm text-muted-foreground">
+            Este rol podría conectarse a este canal de voz. Estás previsualizando, así que no te
+            conecta de verdad.
+          </p>
+        )}
+
+        {!isPreviewing && canConnectVoice && connecting && !isConnectedHere && (
           <p className="text-sm text-muted-foreground">Conectando…</p>
         )}
 

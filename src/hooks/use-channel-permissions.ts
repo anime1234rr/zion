@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react'
 
 import { supabase } from '@/lib/supabase'
+import { listarRolesDeServidor } from '@/lib/members'
 import type { ServerItem } from '@/lib/types'
 
 export interface ChannelPermissions {
   loading: boolean
+  canView: boolean
   canSendMessages: boolean
   canSendFiles: boolean
   canReact: boolean
@@ -17,6 +19,7 @@ export interface ChannelPermissions {
 
 const ALLOWED: ChannelPermissions = {
   loading: false,
+  canView: true,
   canSendMessages: true,
   canSendFiles: true,
   canReact: true,
@@ -25,6 +28,19 @@ const ALLOWED: ChannelPermissions = {
   canUseExternalLinks: true,
   canConnectVoice: true,
   canSpeakVoice: true,
+}
+
+const DENIED: ChannelPermissions = {
+  loading: false,
+  canView: false,
+  canSendMessages: false,
+  canSendFiles: false,
+  canReact: false,
+  canForceMuteVoice: false,
+  canMentionEveryone: false,
+  canUseExternalLinks: false,
+  canConnectVoice: false,
+  canSpeakVoice: false,
 }
 
 interface MiembroConRolRow {
@@ -38,7 +54,7 @@ export function useChannelPermissions(
   userId: string | undefined
 ): ChannelPermissions {
   const isOwner = Boolean(userId) && server.ownerId === userId
-  const [state, setState] = useState<ChannelPermissions>({ ...ALLOWED, loading: !isOwner })
+  const [state, setState] = useState<ChannelPermissions>({ ...DENIED, loading: !isOwner })
 
   useEffect(() => {
     if (isOwner || !userId) return
@@ -58,39 +74,70 @@ export function useChannelPermissions(
       const rolInfo = Array.isArray(miembro?.roles_servidor)
         ? miembro?.roles_servidor[0]
         : miembro?.roles_servidor
-      const permisosGenerales = rolInfo?.permisos ?? {}
+      let permisosGenerales = rolInfo?.permisos ?? {}
       const esAdmin = Boolean(permisosGenerales.todo || permisosGenerales.admin)
 
-      if (esAdmin || !miembro?.rol_id) {
+      if (esAdmin) {
         setState(ALLOWED)
         return
       }
 
-      const { data: overrideRow } = await supabase
-        .from('permisos_canal_rol')
-        .select('permisos')
-        .eq('canal_id', canalId)
-        .eq('rol_id', miembro.rol_id)
-        .maybeSingle<{ permisos: Record<string, boolean> }>()
+      let rolId = miembro?.rol_id ?? null
+
+      if (!rolId) {
+        const roles = await listarRolesDeServidor(server.id)
+        if (cancelado) return
+        const rolBase = roles.find((r) => r.esRolBase)
+        rolId = rolBase?.id ?? null
+        permisosGenerales = rolBase?.permisos ?? {}
+      }
+
+      if (!rolId) {
+        setState(DENIED)
+        return
+      }
+
+      const { data: canalRow } = await supabase
+        .from('canales_servidor')
+        .select('categoria_id, hilo_padre_id')
+        .eq('id', canalId)
+        .maybeSingle<{ categoria_id: string | null; hilo_padre_id: string | null }>()
 
       if (cancelado) return
 
-      const overrides = overrideRow?.permisos ?? {}
-      const resolve = (key: string, fallbackGeneralKey?: string, defaultValue = true) => {
-        if (key in overrides) return Boolean(overrides[key])
+      const padreId = canalRow?.categoria_id ?? canalRow?.hilo_padre_id ?? null
+      const idsAConsultar = padreId ? [canalId, padreId] : [canalId]
+
+      const { data: overrideRows } = await supabase
+        .from('permisos_canal_rol')
+        .select('canal_id, permisos')
+        .in('canal_id', idsAConsultar)
+        .eq('rol_id', rolId)
+        .returns<{ canal_id: string; permisos: Record<string, boolean> }[]>()
+
+      if (cancelado) return
+
+      const overridesPorCanal = new Map((overrideRows ?? []).map((r) => [r.canal_id, r.permisos ?? {}]))
+      const overridesCanal = overridesPorCanal.get(canalId)
+      const overridesCategoria = padreId ? overridesPorCanal.get(padreId) : undefined
+
+      const resolve = (key: string, fallbackGeneralKey?: string) => {
+        if (overridesCanal !== undefined) return Boolean(overridesCanal[key])
+        if (overridesCategoria !== undefined) return Boolean(overridesCategoria[key])
         if (fallbackGeneralKey && fallbackGeneralKey in permisosGenerales) {
           return Boolean(permisosGenerales[fallbackGeneralKey])
         }
-        return defaultValue
+        return false
       }
 
       setState({
         loading: false,
+        canView: resolve('ver_canal'),
         canSendMessages: resolve('enviar_mensajes', 'enviar_mensajes'),
         canSendFiles: resolve('enviar_archivos'),
         canReact: resolve('anadir_reacciones'),
         canForceMuteVoice: resolve('silenciar_miembros_voz'),
-        canMentionEveryone: resolve('mencionar_todos', 'mencionar_todos', false),
+        canMentionEveryone: resolve('mencionar_todos', 'mencionar_todos'),
         canUseExternalLinks: resolve('usar_enlaces_externos'),
         canConnectVoice: resolve('conectar_canal_voz', 'conectar_voz'),
         canSpeakVoice: resolve('hablar_voz', 'transmitir_voz'),
@@ -103,7 +150,12 @@ export function useChannelPermissions(
       .channel(`permisos-canal-${canalId}-${userId}-${crypto.randomUUID()}`)
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'permisos_canal_rol', filter: `canal_id=eq.${canalId}` },
+        { event: '*', schema: 'public', table: 'permisos_canal_rol' },
+        () => cargar()
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'canales_servidor', filter: `id=eq.${canalId}` },
         () => cargar()
       )
       .on(

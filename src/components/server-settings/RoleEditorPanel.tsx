@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Check, Plus, X } from 'lucide-react'
+import { Check, Eye, Pencil, Plus, X } from 'lucide-react'
 
 import {
   CATEGORIAS_PERMISOS,
@@ -16,6 +16,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
+import { RolePreviewPanel } from '@/components/server-settings/RolePreviewPanel'
 
 interface RoleEditorPanelProps {
   servidorId: string
@@ -26,6 +27,7 @@ interface RoleEditorPanelProps {
   onClose: () => void
   onSaved: (role: ServerRole) => void
   onDeleted: (roleId: string) => void
+  onPreviewAsRole?: (role: ServerRole) => void
 }
 
 export function RoleEditorPanel(props: RoleEditorPanelProps) {
@@ -46,6 +48,7 @@ function RoleEditorPanelInner({
   onClose,
   onSaved,
   onDeleted,
+  onPreviewAsRole,
 }: RoleEditorPanelProps) {
   const [nombre, setNombre] = useState(role?.nombre ?? 'nuevo rol')
   const [color, setColor] = useState(role?.color ?? COLORES[0])
@@ -55,6 +58,7 @@ function RoleEditorPanelInner({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
+  const [tab, setTab] = useState<'editar' | 'preview'>('editar')
 
   function togglePermiso(key: string, checked: boolean) {
     setPermisos((prev) => ({ ...prev, [key]: checked }))
@@ -96,10 +100,7 @@ function RoleEditorPanelInner({
   }
 
   return (
-    <form
-      onSubmit={handleSubmit}
-      className="flex h-full flex-col overflow-y-auto rounded-xl border border-border bg-card p-5"
-    >
+    <div className="flex h-full flex-col overflow-y-auto rounded-xl border border-border bg-card p-5">
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-xs font-medium text-muted-foreground uppercase">
@@ -124,6 +125,54 @@ function RoleEditorPanelInner({
         </button>
       </div>
 
+      {role && (
+        <div className="mt-4 flex w-fit gap-1 rounded-lg bg-muted p-1">
+          <button
+            type="button"
+            onClick={() => setTab('editar')}
+            className={cn(
+              'flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring/50',
+              tab === 'editar'
+                ? 'bg-card text-foreground shadow-sm'
+                : 'text-muted-foreground hover:text-foreground'
+            )}
+          >
+            <Pencil className="size-3.5" />
+            Editar
+          </button>
+          <button
+            type="button"
+            onClick={() => setTab('preview')}
+            className={cn(
+              'flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring/50',
+              tab === 'preview'
+                ? 'bg-card text-foreground shadow-sm'
+                : 'text-muted-foreground hover:text-foreground'
+            )}
+          >
+            <Eye className="size-3.5" />
+            Vista previa
+          </button>
+        </div>
+      )}
+
+      {role && tab === 'preview' ? (
+        <div className="mt-5">
+          <RolePreviewPanel
+            servidorId={servidorId}
+            role={role}
+            onPreviewAsRole={
+              onPreviewAsRole
+                ? () => {
+                    onPreviewAsRole(role)
+                    onClose()
+                  }
+                : undefined
+            }
+          />
+        </div>
+      ) : (
+      <form onSubmit={handleSubmit} className="contents">
       {!role && (
         <div className="mt-5 flex flex-col gap-1.5">
           <Label className="text-xs text-muted-foreground uppercase">
@@ -287,6 +336,8 @@ function RoleEditorPanelInner({
           </Button>
         </div>
       )}
-    </form>
+      </form>
+      )}
+    </div>
   )
 }

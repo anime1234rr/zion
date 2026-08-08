@@ -1,7 +1,7 @@
 import { useState } from 'react'
-import { Code2, Hash, Megaphone, Volume2 } from 'lucide-react'
+import { Code2, Hash, Megaphone, MessagesSquare, Volume2 } from 'lucide-react'
 
-import { crearCanal } from '@/lib/channels'
+import { crearCanal, crearCanalEnCategoria } from '@/lib/channels'
 import { cn, getErrorMessage } from '@/lib/utils'
 import type { ChannelType } from '@/lib/types'
 import { Button } from '@/components/ui/button'
@@ -21,12 +21,15 @@ const tipos: { type: ChannelType; label: string; icon: typeof Hash }[] = [
   { type: 'voice', label: 'Voz', icon: Volume2 },
   { type: 'code', label: 'Código', icon: Code2 },
   { type: 'announcement', label: 'Anuncios', icon: Megaphone },
+  { type: 'forum', label: 'Foro', icon: MessagesSquare },
 ]
 
 interface CrearCanalDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   servidorId: string
+  categoriaId?: string | null
+  posicion?: number
   onCreated: () => void
 }
 
@@ -34,6 +37,8 @@ export function CrearCanalDialog({
   open,
   onOpenChange,
   servidorId,
+  categoriaId,
+  posicion,
   onCreated,
 }: CrearCanalDialogProps) {
   return (
@@ -42,6 +47,8 @@ export function CrearCanalDialog({
         <CrearCanalForm
           key={String(open)}
           servidorId={servidorId}
+          categoriaId={categoriaId}
+          posicion={posicion}
           onOpenChange={onOpenChange}
           onCreated={onCreated}
         />
@@ -52,10 +59,14 @@ export function CrearCanalDialog({
 
 function CrearCanalForm({
   servidorId,
+  categoriaId,
+  posicion,
   onOpenChange,
   onCreated,
 }: {
   servidorId: string
+  categoriaId?: string | null
+  posicion?: number
   onOpenChange: (open: boolean) => void
   onCreated: () => void
 }) {
@@ -71,7 +82,11 @@ function CrearCanalForm({
     setLoading(true)
     setError(null)
     try {
-      await crearCanal(servidorId, nombre, tipo)
+      if (categoriaId) {
+        await crearCanalEnCategoria(servidorId, nombre, tipo, categoriaId, posicion ?? 0)
+      } else {
+        await crearCanal(servidorId, nombre, tipo)
+      }
       onCreated()
       onOpenChange(false)
     } catch (err) {
@@ -92,7 +107,7 @@ function CrearCanalForm({
 
       <div className="mt-4 flex flex-col gap-1.5">
         <Label>Tipo de canal</Label>
-        <div className="grid grid-cols-4 gap-1.5">
+        <div className="grid grid-cols-5 gap-1.5">
           {tipos.map(({ type, label, icon: Icon }) => (
             <button
               key={type}

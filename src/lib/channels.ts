@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase'
 import { tipoCanalToChannelType } from '@/lib/servers'
+import { listarRolesDeServidor } from '@/lib/members'
 import type { ChannelCategory, ChannelItem, ChannelType } from '@/lib/types'
 
 interface CanalRow {
@@ -43,6 +44,7 @@ function mapCanalToChannelItem(row: CanalRow): ChannelItem {
     id: row.id,
     name: row.nombre,
     type: tipoCanalToChannelType[row.tipo] ?? 'text',
+    categoryId: row.categoria_id,
   }
 }
 
@@ -85,12 +87,23 @@ export async function listarCanales(
     .from('canales_servidor')
     .select('*')
     .eq('servidor_id', servidorId)
+    .neq('tipo', 'hilo_foro')
     .order('posicion', { ascending: true })
     .order('creado_at', { ascending: true })
     .returns<CanalRow[]>()
 
   if (error) throw error
   return agruparPorCategoria(data ?? [])
+}
+
+const PERMISOS_PRINCIPALES_CATEGORIA: Record<string, boolean> = {
+  ver_canal: true,
+  enviar_mensajes: true,
+  enviar_archivos: true,
+  anadir_reacciones: true,
+  usar_enlaces_externos: true,
+  conectar_canal_voz: true,
+  hablar_voz: true,
 }
 
 export async function crearCategoria(
@@ -107,6 +120,16 @@ export async function crearCategoria(
 
   if (error) throw error
   if (!data) throw new Error('No se pudo crear la categoría.')
+
+  try {
+    const roles = await listarRolesDeServidor(servidorId)
+    const rolBase = roles.find((r) => r.esRolBase)
+    if (rolBase) {
+      await actualizarPermisosDeCanal(data.id, rolBase.id, PERMISOS_PRINCIPALES_CATEGORIA)
+    }
+  } catch (err) {
+    console.error('No se pudieron aplicar los permisos principales a la categoría', err)
+  }
 
   return { id: data.id, name: data.nombre, channels: [] }
 }
@@ -138,6 +161,7 @@ const channelTypeToTipoCanal: Record<ChannelType, string> = {
   voice: 'voz',
   code: 'codigo',
   announcement: 'anuncios',
+  forum: 'foro',
 }
 
 export async function crearCanal(
@@ -157,6 +181,18 @@ export async function crearCanal(
   if (!data) throw new Error('No se pudo crear el canal.')
 
   return mapCanalToChannelItem(data)
+}
+
+export async function crearCanalEnCategoria(
+  servidorId: string,
+  nombre: string,
+  tipo: ChannelType,
+  categoriaId: string,
+  posicion: number
+): Promise<ChannelItem> {
+  const nuevo = await crearCanal(servidorId, nombre, tipo)
+  await reordenarCanales(servidorId, [{ canalId: nuevo.id, categoriaId, posicion }])
+  return { ...nuevo, categoryId: categoriaId }
 }
 
 export async function actualizarCanal(
@@ -192,9 +228,38 @@ export async function eliminarCanal(servidorId: string, canalId: string): Promis
   if (error) throw error
 }
 
-const CANALES_DE_TEXTO: ChannelType[] = ['text', 'code', 'announcement']
+export async function eliminarCategoria(
+  servidorId: string,
+  categoria: ChannelCategory
+): Promise<void> {
+  const overridesCategoria = await listarPermisosDeCanal(categoria.id)
+
+  for (const canal of categoria.channels) {
+    const overridesCanal = await listarPermisosDeCanal(canal.id)
+    const rolesConPropios = new Set(overridesCanal.map((o) => o.rolId))
+    for (const heredado of overridesCategoria) {
+      if (rolesConPropios.has(heredado.rolId)) continue
+      await actualizarPermisosDeCanal(canal.id, heredado.rolId, heredado.permisos)
+    }
+  }
+
+  if (categoria.channels.length > 0) {
+    await reordenarCanales(
+      servidorId,
+      categoria.channels.map((canal, index) => ({
+        canalId: canal.id,
+        categoriaId: null,
+        posicion: index,
+      }))
+    )
+  }
+
+  await eliminarCanal(servidorId, categoria.id)
+}
+
+const CANALES_DE_TEXTO: ChannelType[] = ['text', 'code', 'announcement', 'forum']
 const CANALES_DE_VOZ: ChannelType[] = ['voice']
-const TODOS_LOS_CANALES: ChannelType[] = ['text', 'code', 'announcement', 'voice']
+const TODOS_LOS_CANALES: ChannelType[] = ['text', 'code', 'announcement', 'voice', 'forum']
 
 export const PERMISOS_CANAL_CONOCIDOS = [
   { key: 'ver_canal', label: 'Visualizar el canal en la lista', enforced: true, tipos: TODOS_LOS_CANALES },
@@ -241,6 +306,22 @@ export async function listarPermisosDeCanal(canalId: string): Promise<ChannelRol
   }))
 }
 
+export async function listarPermisosDeRolEnCanales(rolId: string): Promise<ChannelRolePermisos[]> {
+  const { data, error } = await supabase
+    .from('permisos_canal_rol')
+    .select('*')
+    .eq('rol_id', rolId)
+    .returns<PermisoCanalRolRow[]>()
+
+  if (error) throw error
+  return (data ?? []).map((row) => ({
+    id: row.id,
+    canalId: row.canal_id,
+    rolId: row.rol_id,
+    permisos: row.permisos ?? {},
+  }))
+}
+
 export async function actualizarPermisosDeCanal(
   canalId: string,
   rolId: string,
@@ -259,4 +340,14 @@ export async function actualizarPermisosDeCanal(
     rolId: data.rol_id,
     permisos: data.permisos ?? {},
   }
+}
+
+export async function eliminarPermisosDeCanal(canalId: string, rolId: string): Promise<void> {
+  const { error } = await supabase
+    .from('permisos_canal_rol')
+    .delete()
+    .eq('canal_id', canalId)
+    .eq('rol_id', rolId)
+
+  if (error) throw error
 }

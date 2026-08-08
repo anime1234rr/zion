@@ -31,7 +31,7 @@ export interface ServerItem {
   defaultNotifications: ServerDefaultNotifications
 }
 
-export type ChannelType = 'text' | 'voice' | 'code' | 'announcement'
+export type ChannelType = 'text' | 'voice' | 'code' | 'announcement' | 'forum'
 
 export interface ChannelItem {
   id: string
@@ -39,6 +39,7 @@ export interface ChannelItem {
   type: ChannelType
   topic?: string
   unread?: boolean
+  categoryId?: string | null
 }
 
 export interface ChannelCategory {

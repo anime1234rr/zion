@@ -7,12 +7,14 @@ import {
   ImageUp,
   Maximize2,
   Megaphone,
+  MessagesSquare,
   Mic,
   MoreHorizontal,
   Paperclip,
   Pin,
   Search,
   Send,
+  ShieldCheck,
   Smile,
   SmilePlus,
   Sticker as StickerIcon,
@@ -29,12 +31,17 @@ import { formatFencedCode, parseFencedCode } from '@/lib/code-fence'
 import { groupMessages } from '@/lib/message-grouping'
 import { CHAT_ADJUNTO_ACCEPT, subirArchivoChat, subirNotaDeVoz } from '@/lib/storage'
 import { alternarReaccionMensaje, desfijarMensaje, fijarMensaje } from '@/lib/messages'
-import { listarMiembrosParaMencion, type MentionableMember } from '@/lib/members'
+import { listarMiembrosParaMencion, type MentionableMember, type ServerRole } from '@/lib/members'
 import { crearNotificacionMencion } from '@/lib/notifications'
 import { tieneAlgunComandoDeSlash } from '@/lib/slash-commands'
 import { useMessageActions } from '@/hooks/use-message-actions'
 import { useServerPermissions } from '@/hooks/use-server-permissions'
 import { useChannelPermissions } from '@/hooks/use-channel-permissions'
+import {
+  ACCESO_DENEGADO,
+  resolvePreviewPermission,
+  type ChannelPreviewPermissions,
+} from '@/hooks/use-role-preview'
 import { useVoiceMessageRecorder } from '@/hooks/use-voice-message-recorder'
 import { useServerExpresiones } from '@/hooks/use-server-expresiones'
 import type {
@@ -88,6 +95,7 @@ const channelIcon: Record<ChannelType, typeof Hash> = {
   voice: Volume2,
   code: Code2,
   announcement: Megaphone,
+  forum: MessagesSquare,
 }
 
 function messageToRawText(message: Pick<ChatMessage, 'content' | 'code'>): string {
@@ -134,6 +142,7 @@ interface MessageRowProps {
   canDeleteOthers: boolean
   canPinMessages: boolean
   canReact: boolean
+  isPreviewing: boolean
   serverId: string
   channelId: string
   customEmojis: Map<string, string>
@@ -152,6 +161,7 @@ function MessageRow({
   canDeleteOthers,
   canPinMessages,
   canReact,
+  isPreviewing,
   serverId,
   channelId,
   customEmojis,
@@ -195,6 +205,7 @@ function MessageRow({
   }
 
   async function handleToggleReaction(emoji: string) {
+    if (isPreviewing) return
     try {
       await alternarReaccionMensaje(message.id, emoji)
     } catch (err) {
@@ -430,6 +441,9 @@ interface ChatPrincipalProps {
   highlightMessageId?: string | null
   onNavigateToServer?: (serverId: string) => void
   onJumpToChannelMessage: (channelId: string, messageId: string) => void
+  previewRole?: ServerRole | null
+  previewPermissions?: ChannelPreviewPermissions
+  previewLoading?: boolean
 }
 
 export function ChatPrincipal({
@@ -450,6 +464,9 @@ export function ChatPrincipal({
   highlightMessageId,
   onNavigateToServer,
   onJumpToChannelMessage,
+  previewRole,
+  previewPermissions,
+  previewLoading,
 }: ChatPrincipalProps) {
   const [draft, setDraft] = useState('')
   const [pendingFile, setPendingFile] = useState<File | null>(null)
@@ -467,13 +484,34 @@ export function ChatPrincipal({
   const sendVoiceOnStopRef = useRef(false)
   const HeaderIcon = channelIcon[channel.type]
   const groups = groupMessages(messages)
-  const { isOwner, hasPermission } = useServerPermissions(server, currentUserId)
+  const { isOwner: realIsOwner, hasPermission: realHasPermission } = useServerPermissions(
+    server,
+    currentUserId
+  )
+  const isPreviewing = Boolean(previewRole)
+  const isOwner = isPreviewing ? false : realIsOwner
+  const hasPermission = isPreviewing
+    ? (permiso: string) => resolvePreviewPermission(previewRole, permiso)
+    : realHasPermission
   const canDeleteOthers = isOwner || hasPermission('borrar_mensajes_ajenos')
   const canPinMessages = isOwner || hasPermission('fijar_mensajes')
   const canUseSlashCommands = tieneAlgunComandoDeSlash(isOwner, hasPermission)
   const [slashPanelOpen, setSlashPanelOpen] = useState(false)
-  const { canSendMessages, canSendFiles, canReact, canMentionEveryone, canUseExternalLinks } =
-    useChannelPermissions(server, channel.id, currentUserId)
+  const realChannelPermissions = useChannelPermissions(server, channel.id, currentUserId)
+  const effectivePermissions: ChannelPreviewPermissions = isPreviewing
+    ? (previewPermissions ?? ACCESO_DENEGADO)
+    : realChannelPermissions
+  const channelPermissionsLoading = isPreviewing
+    ? Boolean(previewLoading)
+    : realChannelPermissions.loading
+  const {
+    canView,
+    canSendMessages,
+    canSendFiles,
+    canReact,
+    canMentionEveryone,
+    canUseExternalLinks,
+  } = effectivePermissions
   const [composerError, setComposerError] = useState<string | null>(null)
   const { emojis, stickers } = useServerExpresiones(server.id)
   const customEmojiList = useMemo(() => [...emojis, ...stickers], [emojis, stickers])
@@ -625,6 +663,10 @@ export function ChatPrincipal({
   }
 
   async function submitDraft() {
+    if (isPreviewing) {
+      setComposerError('Estás previsualizando: no se envían mensajes reales.')
+      return
+    }
     if (uploading) return
     if (!draft.trim() && !pendingFile && !pendingVoiceBlob) return
 
@@ -723,6 +765,15 @@ export function ChatPrincipal({
 
   function insertCodeFence() {
     setDraft((prev) => `${prev}${prev ? '\n' : ''}\`\`\`ts\n\n\`\`\``)
+  }
+
+  if (!channelPermissionsLoading && !canView) {
+    return (
+      <section className="flex h-full min-w-0 flex-1 flex-col items-center justify-center gap-2 bg-background text-center">
+        <ShieldCheck className="size-8 text-muted-foreground" />
+        <p className="text-sm text-muted-foreground">No tenés permiso para ver este canal.</p>
+      </section>
+    )
   }
 
   return (
@@ -861,6 +912,7 @@ export function ChatPrincipal({
                     canDeleteOthers={canDeleteOthers}
                     canPinMessages={canPinMessages}
                     canReact={canReact}
+                    isPreviewing={isPreviewing}
                     serverId={server.id}
                     channelId={channel.id}
                     customEmojis={emojiMap}

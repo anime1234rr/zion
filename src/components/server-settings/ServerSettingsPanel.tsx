@@ -17,6 +17,7 @@ import {
 import { cn } from '@/lib/utils'
 import { useServerPermissions } from '@/hooks/use-server-permissions'
 import type { ServerItem } from '@/lib/types'
+import type { ServerRole } from '@/lib/members'
 import { GeneralSection } from '@/components/server-settings/GeneralSection'
 import { PersonasSection } from '@/components/server-settings/PersonasSection'
 import { RolesPermisosSection } from '@/components/server-settings/RolesPermisosSection'
@@ -71,6 +72,7 @@ interface ServerSettingsPanelProps {
   backgroundType?: 'imagen' | 'video'
   onServerUpdated: (server: ServerItem) => void
   onServerDeleted?: (serverId: string) => void
+  onPreviewAsRole?: (role: ServerRole) => void
 }
 
 export function ServerSettingsPanel({
@@ -82,6 +84,7 @@ export function ServerSettingsPanel({
   backgroundType,
   onServerUpdated,
   onServerDeleted,
+  onPreviewAsRole,
 }: ServerSettingsPanelProps) {
   const { hasPermission, isOwner } = useServerPermissions(server, currentUserId)
   const [active, setActive] = useState<SectionId>('general')
@@ -167,7 +170,11 @@ export function ServerSettingsPanel({
             <PersonasSection server={server} currentUserId={currentUserId} />
           )}
           {active === 'roles-permisos' && (isOwner || hasPermission('gestionar_roles')) && (
-            <RolesPermisosSection server={server} currentUserId={currentUserId} />
+            <RolesPermisosSection
+              server={server}
+              currentUserId={currentUserId}
+              onPreviewAsRole={onPreviewAsRole}
+            />
           )}
           {active === 'canales-estructura' && (
             <CanalesEstructuraSection
