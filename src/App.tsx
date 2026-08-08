@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 
 import { useAuth } from '@/hooks/use-auth'
+import { useSystemStatus } from '@/hooks/use-system-status'
 import { cn } from '@/lib/utils'
 import { obtenerPerfil } from '@/lib/profiles'
 import {
@@ -37,6 +38,7 @@ import type {
 } from '@/lib/types'
 
 import { AuthScreen } from '@/components/AuthScreen'
+import { MaintenanceScreen } from '@/components/MaintenanceScreen'
 import { UpdateBadge } from '@/components/UpdateBadge'
 import { SidebarServidores } from '@/components/SidebarServidores'
 import { PanelCanales } from '@/components/PanelCanales'
@@ -529,6 +531,11 @@ function AppShell({ userId }: { userId: string }) {
 
 function App() {
   const { user, loading } = useAuth()
+  const { isMaintenance } = useSystemStatus()
+
+  if (isMaintenance) {
+    return <MaintenanceScreen />
+  }
 
   return (
     <>

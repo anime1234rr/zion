@@ -1,12 +1,35 @@
-import { useRef, useState } from 'react'
-import { Check, ChevronDown, Copy, ImagePlus, RefreshCw } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import {
+  Blocks,
+  Check,
+  ChevronDown,
+  Copy,
+  Crown,
+  Hash,
+  History,
+  ImagePlus,
+  RefreshCw,
+  Shield,
+  ShieldCheck,
+  Smile,
+  Users,
+} from 'lucide-react'
 
 import { useAuth } from '@/hooks/use-auth'
 import { actualizarServidor, regenerarInvitacion } from '@/lib/servers'
 import { subirBannerServidor, subirIconoServidor } from '@/lib/storage'
 import { buildInviteLink } from '@/lib/deep-links'
 import { cn, getErrorMessage } from '@/lib/utils'
-import type { ServerDefaultNotifications, ServerItem } from '@/lib/types'
+import { listarCanales } from '@/lib/channels'
+import { listarMiembros, listarRolesDeServidor } from '@/lib/members'
+import { listarExpresiones } from '@/lib/expresiones'
+import { listarWebhooks } from '@/lib/webhooks'
+import type {
+  ServerDefaultNotifications,
+  ServerHistoryRetention,
+  ServerItem,
+  ServerVerificationLevel,
+} from '@/lib/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -21,6 +44,30 @@ const OPCIONES_NOTIFICACIONES: { value: ServerDefaultNotifications; label: strin
   { value: 'todos', label: 'Todos los mensajes' },
   { value: 'menciones', label: 'Solo menciones' },
 ]
+
+const NIVEL_VERIFICACION_LABEL: Record<ServerVerificationLevel, string> = {
+  ninguno: 'Ninguno',
+  bajo: 'Bajo',
+  medio: 'Medio',
+  alto: 'Alto',
+}
+
+const RETENCION_LABEL: Record<ServerHistoryRetention, string> = {
+  '7d': '7 días',
+  '30d': '30 días',
+  '90d': '90 días',
+  '1a': '1 año',
+  para_siempre: 'Para siempre',
+}
+
+interface ResumenGeneral {
+  miembros: number
+  canales: number
+  roles: number
+  expresiones: number
+  apps: number
+  ownerName: string | null
+}
 
 interface GeneralSectionProps {
   server: ServerItem
@@ -45,8 +92,38 @@ export function GeneralSection({ server, canEdit, canManageInvites, onUpdated }:
   const [inviteError, setInviteError] = useState<string | null>(null)
   const [savingNotif, setSavingNotif] = useState(false)
   const [notifError, setNotifError] = useState<string | null>(null)
+  const [resumen, setResumen] = useState<ResumenGeneral | null>(null)
+  const [resumenError, setResumenError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const bannerInputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    let cancelado = false
+
+    Promise.all([
+      listarMiembros(server.id),
+      listarCanales(server.id),
+      listarRolesDeServidor(server.id),
+      listarExpresiones(server.id),
+      listarWebhooks(server.id),
+    ])
+      .then(([miembros, categorias, roles, expresiones, apps]) => {
+        if (cancelado) return
+        setResumen({
+          miembros: miembros.length,
+          canales: categorias.flatMap((categoria) => categoria.channels).length,
+          roles: roles.length,
+          expresiones: expresiones.length,
+          apps: apps.length,
+          ownerName: miembros.find((m) => m.user.id === server.ownerId)?.user.name ?? null,
+        })
+      })
+      .catch((err) => !cancelado && setResumenError(getErrorMessage(err)))
+
+    return () => {
+      cancelado = true
+    }
+  }, [server.id, server.ownerId])
 
   async function handleCopyInviteLink() {
     if (!server.inviteCode) return
@@ -154,14 +231,85 @@ export function GeneralSection({ server, canEdit, canManageInvites, onUpdated }:
   const dirty =
     nombre.trim() !== server.name || iconFile !== null || bannerFile !== null || bannerRemoved
 
+  const ESTADISTICAS = [
+    { icon: Users, label: 'Miembros', value: resumen?.miembros },
+    { icon: Hash, label: 'Canales', value: resumen?.canales },
+    { icon: Shield, label: 'Roles', value: resumen?.roles },
+    { icon: Smile, label: 'Expresiones', value: resumen?.expresiones },
+    { icon: Blocks, label: 'Apps', value: resumen?.apps },
+  ]
+
   return (
     <div className="max-w-xl">
       <h1 className="text-lg font-semibold text-foreground">Resumen</h1>
       <p className="mt-1 text-sm text-muted-foreground">
-        Nombre e ícono públicos de {server.name}.
+        Todo lo que tiene configurado {server.name} de un vistazo.
       </p>
 
-      <form onSubmit={handleSubmit} className="mt-6 flex flex-col gap-6">
+      <h2 className="mt-8 text-sm font-semibold text-foreground uppercase">General</h2>
+      <p className="mt-1 text-sm text-muted-foreground">
+        Actividad y contenido actual de {server.name}.
+      </p>
+      {resumenError ? (
+        <p className="mt-3 text-sm text-destructive" role="alert">
+          {resumenError}
+        </p>
+      ) : (
+        <div className="mt-3 grid grid-cols-3 gap-2.5">
+          {ESTADISTICAS.map((stat) => (
+            <div key={stat.label} className="rounded-lg border border-border p-3">
+              <div className="flex items-center gap-1.5 text-muted-foreground">
+                <stat.icon className="size-3.5 shrink-0" />
+                <span className="truncate text-xs">{stat.label}</span>
+              </div>
+              <p className="mt-1 text-lg font-semibold text-foreground">
+                {stat.value ?? '—'}
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <h2 className="mt-8 text-sm font-semibold text-foreground uppercase">Configuración</h2>
+      <p className="mt-1 text-sm text-muted-foreground">
+        Valores actuales definidos para {server.name}.
+      </p>
+      <dl className="mt-3 divide-y divide-border overflow-hidden rounded-lg border border-border">
+        <div className="flex items-center justify-between gap-3 p-3">
+          <dt className="flex items-center gap-2 text-sm text-foreground">
+            <ShieldCheck className="size-4 shrink-0 text-muted-foreground" />
+            Nivel de verificación
+          </dt>
+          <dd className="text-sm text-muted-foreground">
+            {NIVEL_VERIFICACION_LABEL[server.verificationLevel]}
+          </dd>
+        </div>
+        <div className="flex items-center justify-between gap-3 p-3">
+          <dt className="flex items-center gap-2 text-sm text-foreground">
+            <History className="size-4 shrink-0 text-muted-foreground" />
+            Retención de historial
+          </dt>
+          <dd className="text-sm text-muted-foreground">
+            {RETENCION_LABEL[server.historyRetention]}
+          </dd>
+        </div>
+        <div className="flex items-center justify-between gap-3 p-3">
+          <dt className="flex items-center gap-2 text-sm text-foreground">
+            <Crown className="size-4 shrink-0 text-muted-foreground" />
+            Propietario
+          </dt>
+          <dd className="text-sm text-muted-foreground">{resumen?.ownerName ?? '—'}</dd>
+        </div>
+      </dl>
+
+      <h2 className="mt-8 text-sm font-semibold text-foreground uppercase">
+        Identidad del servidor
+      </h2>
+      <p className="mt-1 text-sm text-muted-foreground">
+        Banner, ícono y nombre que ven los miembros de {server.name}.
+      </p>
+
+      <form onSubmit={handleSubmit} className="mt-4 flex flex-col gap-6">
         <div className="flex flex-col gap-1.5">
           <Label>Banner del servidor</Label>
           <p className="text-xs text-muted-foreground">
@@ -263,8 +411,13 @@ export function GeneralSection({ server, canEdit, canManageInvites, onUpdated }:
 
       {server.inviteCode && canManageInvites && (
         <div className="mt-8 w-full overflow-hidden border-t border-border pt-6">
-          <Label>Enlace de invitación</Label>
-          <div className="mt-1.5 flex w-full items-center justify-between gap-2 overflow-hidden rounded-lg border border-input bg-muted/40 p-2">
+          <h2 className="text-sm font-semibold text-foreground uppercase">
+            Enlace de invitación
+          </h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Cualquiera con este enlace puede unirse a {server.name}.
+          </p>
+          <div className="mt-3 flex w-full items-center justify-between gap-2 overflow-hidden rounded-lg border border-input bg-muted/40 p-2">
             <div className="min-w-0 flex-1 overflow-hidden px-1">
               <code className="min-w-0 truncate font-mono text-xs text-foreground sm:text-sm">
                 {buildInviteLink(server.inviteCode)}
@@ -296,15 +449,17 @@ export function GeneralSection({ server, canEdit, canManageInvites, onUpdated }:
       )}
 
       <div className="mt-8 w-full border-t border-border pt-6">
-        <Label>Notificaciones predeterminadas</Label>
-        <p className="mt-1 text-xs text-muted-foreground">
+        <h2 className="text-sm font-semibold text-foreground uppercase">
+          Notificaciones predeterminadas
+        </h2>
+        <p className="mt-1 text-sm text-muted-foreground">
           Nivel de alertas que reciben los miembros nuevos al unirse a {server.name}.
         </p>
         <DropdownMenu>
           <DropdownMenuTrigger asChild disabled={!canEdit || savingNotif}>
             <button
               type="button"
-              className="mt-1.5 flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-sm font-medium text-foreground outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-60"
+              className="mt-3 flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-sm font-medium text-foreground outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-60"
             >
               {OPCIONES_NOTIFICACIONES.find((o) => o.value === server.defaultNotifications)?.label}
               <ChevronDown className="size-3.5 text-muted-foreground" />
