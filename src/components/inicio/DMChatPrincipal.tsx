@@ -17,6 +17,7 @@ import {
 } from 'lucide-react'
 
 import { buildDMMessageLink } from '@/lib/deep-links'
+import { writeClipboard } from '@/lib/electron-bridge'
 import { renderMessageContent } from '@/lib/render-message-content'
 import { cn, getErrorMessage } from '@/lib/utils'
 import { formatFencedCode, parseFencedCode } from '@/lib/code-fence'
@@ -66,7 +67,7 @@ function CodeBlock({ language, code }: CodeBlockData) {
   const [copied, setCopied] = useState(false)
 
   async function handleCopy() {
-    await navigator.clipboard.writeText(code)
+    await writeClipboard(code)
     setCopied(true)
     setTimeout(() => setCopied(false), 1500)
   }
@@ -129,9 +130,9 @@ function MessageRow({
     onDelete: () => onDeleteMessage(message.id),
     onReply: () => onReplyMessage(message),
     onForward: () => onForwardMessage(message),
-    onCopyId: () => navigator.clipboard.writeText(message.id),
-    onCopyLink: () => navigator.clipboard.writeText(buildDMMessageLink(conversationId, message.id)),
-    onCopyContent: () => navigator.clipboard.writeText(messageToRawText(message)),
+    onCopyId: () => writeClipboard(message.id),
+    onCopyLink: () => writeClipboard(buildDMMessageLink(conversationId, message.id)),
+    onCopyContent: () => writeClipboard(messageToRawText(message)),
   })
 
   function saveEdit() {

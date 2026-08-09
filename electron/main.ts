@@ -1,4 +1,4 @@
-import { app, BrowserWindow, desktopCapturer, ipcMain, Menu, session, shell } from 'electron'
+import { app, BrowserWindow, clipboard, desktopCapturer, ipcMain, Menu, session, shell } from 'electron'
 import electronUpdater, { type ProgressInfo, type UpdateInfo } from 'electron-updater'
 import log from 'electron-log'
 import path from 'node:path'
@@ -150,6 +150,10 @@ if (!gotLock) {
     if (URL.canParse(url) && new URL(url).protocol === 'https:') {
       shell.openExternal(url)
     }
+  })
+
+  ipcMain.handle('zion:write-clipboard', (_event, text: string) => {
+    clipboard.writeText(text)
   })
 
   ipcMain.handle('zion:check-for-updates', async () => {

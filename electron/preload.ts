@@ -41,6 +41,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   openExternal: (url: string): void => {
     ipcRenderer.send('zion:open-external', url)
   },
+  writeClipboard: (text: string): Promise<void> => ipcRenderer.invoke('zion:write-clipboard', text),
   listScreenSources: (): Promise<ScreenSourcePayload[]> =>
     ipcRenderer.invoke('zion:list-screen-sources'),
   selectScreenSource: (sourceId: string, includeAudio: boolean): void => {

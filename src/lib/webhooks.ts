@@ -5,8 +5,10 @@ export interface ServerWebhook {
   servidorId: string
   canalId: string
   nombre: string
+  avatarUrl: string | null
   token: string
   creadoAt: string
+  ultimoUsoAt: string | null
 }
 
 interface WebhookRow {
@@ -14,8 +16,10 @@ interface WebhookRow {
   servidor_id: string
   canal_id: string
   nombre: string
+  avatar_url: string | null
   token: string
   creado_at: string
+  ultimo_uso_at: string | null
 }
 
 function mapWebhook(row: WebhookRow): ServerWebhook {
@@ -24,8 +28,10 @@ function mapWebhook(row: WebhookRow): ServerWebhook {
     servidorId: row.servidor_id,
     canalId: row.canal_id,
     nombre: row.nombre,
+    avatarUrl: row.avatar_url,
     token: row.token,
     creadoAt: row.creado_at,
+    ultimoUsoAt: row.ultimo_uso_at,
   }
 }
 
@@ -58,5 +64,18 @@ export async function crearWebhook(
 
 export async function eliminarWebhook(webhookId: string): Promise<void> {
   const { error } = await supabase.from('webhooks_servidor').delete().eq('id', webhookId)
+  if (error) throw error
+}
+
+export async function actualizarPerfilWebhook(
+  webhookId: string,
+  nombre: string,
+  avatarUrl: string | null
+): Promise<void> {
+  const { error } = await supabase.rpc('actualizar_perfil_webhook', {
+    p_webhook_id: webhookId,
+    p_nombre: nombre.trim(),
+    p_avatar_url: avatarUrl,
+  })
   if (error) throw error
 }

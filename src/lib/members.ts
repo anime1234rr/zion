@@ -327,7 +327,7 @@ export const PERMISOS_CONOCIDOS = [
     key: 'gestionar_webhooks',
     label: 'Configurar apps y webhooks',
     categoria: 'servidor',
-    enforced: false,
+    enforced: true,
   },
   {
     key: 'gestionar_canales',

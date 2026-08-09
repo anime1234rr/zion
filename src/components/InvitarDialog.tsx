@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Check, Copy, Link as LinkIcon } from 'lucide-react'
 
 import { buildInviteLink } from '@/lib/deep-links'
+import { writeClipboard } from '@/lib/electron-bridge'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -29,14 +30,14 @@ export function InvitarDialog({
 
   async function handleCopyLink() {
     if (!inviteCode) return
-    await navigator.clipboard.writeText(buildInviteLink(inviteCode))
+    await writeClipboard(buildInviteLink(inviteCode))
     setCopiedLink(true)
     setTimeout(() => setCopiedLink(false), 1500)
   }
 
   async function handleCopyCode() {
     if (!inviteCode) return
-    await navigator.clipboard.writeText(inviteCode)
+    await writeClipboard(inviteCode)
     setCopiedCode(true)
     setTimeout(() => setCopiedCode(false), 1500)
   }

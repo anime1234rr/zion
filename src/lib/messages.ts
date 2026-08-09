@@ -2,10 +2,17 @@ import { supabase } from '@/lib/supabase'
 import { formatFencedCode, parseFencedCode } from '@/lib/code-fence'
 import { attachmentTypeToAdjuntoTipo, formatTimestamp, mapAdjunto, mapReacciones } from '@/lib/message-format'
 import { mapPerfilToChatUser, type PerfilRow } from '@/lib/profiles'
-import type { ChatAttachment, ChatMessage, CodeBlock, ForwardedFrom, ReplyPreview } from '@/lib/types'
+import type {
+  ChatAttachment,
+  ChatMessage,
+  CodeBlock,
+  ForwardedFrom,
+  MessageEmbed,
+  ReplyPreview,
+} from '@/lib/types'
 
 const MENSAJE_SELECT =
-  '*, perfiles!mensajes_usuario_id_fkey(*), mensaje_respondido:respuesta_a_id(id, contenido, tipo_mensaje, perfiles!mensajes_usuario_id_fkey(*)), reacciones_mensajes(usuario_id, emoji)'
+  '*, perfiles!mensajes_usuario_id_fkey(*), webhooks_servidor(nombre, avatar_url), mensaje_respondido:respuesta_a_id(id, contenido, tipo_mensaje, perfiles!mensajes_usuario_id_fkey(*)), reacciones_mensajes(usuario_id, emoji)'
 
 interface MensajeRespondidoRow {
   id: string
@@ -27,7 +34,10 @@ interface MensajeRow {
   reenviado_de_autor_nombre: string | null
   reenviado_de_origen: string | null
   fijado: boolean
+  embed: MessageEmbed | null
+  webhook_id: string | null
   perfiles: PerfilRow | null
+  webhooks_servidor: { nombre: string; avatar_url: string | null } | { nombre: string; avatar_url: string | null }[] | null
   mensaje_respondido: MensajeRespondidoRow | null
   reacciones_mensajes: { usuario_id: string; emoji: string }[] | null
 }
@@ -59,9 +69,19 @@ function mapForwardedFrom(row: MensajeRow): ForwardedFrom | undefined {
 }
 
 function mapMensajeRow(row: MensajeRow): ChatMessage {
-  const author = row.perfiles
-    ? mapPerfilToChatUser(row.perfiles)
-    : { id: row.usuario_id, name: 'Usuario', status: 'offline' as const }
+  const webhook = Array.isArray(row.webhooks_servidor) ? row.webhooks_servidor[0] : row.webhooks_servidor
+
+  const author = webhook
+    ? {
+        id: row.usuario_id,
+        name: webhook.nombre,
+        avatarUrl: webhook.avatar_url ?? undefined,
+        status: 'offline' as const,
+        isWebhook: true,
+      }
+    : row.perfiles
+      ? mapPerfilToChatUser(row.perfiles)
+      : { id: row.usuario_id, name: 'Usuario', status: 'offline' as const }
 
   const base = {
     id: row.id,
@@ -73,6 +93,7 @@ function mapMensajeRow(row: MensajeRow): ChatMessage {
     forwardedFrom: mapForwardedFrom(row),
     pinned: row.fijado,
     reactions: mapReacciones(row.reacciones_mensajes),
+    embed: row.embed ?? undefined,
   }
 
   if (row.tipo_mensaje === 'fragmento_codigo') {

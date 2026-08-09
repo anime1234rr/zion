@@ -20,6 +20,7 @@ interface ServidorRow {
   nivel_verificacion: string
   retencion_historial: string
   notificaciones_por_defecto: string
+  comunidad_activa: boolean
 }
 
 export const tipoCanalToChannelType: Record<string, ChannelType> = {
@@ -55,6 +56,7 @@ function mapServidorToServerItem(row: ServidorRow): ServerItem {
     )
       ? (row.notificaciones_por_defecto as ServerDefaultNotifications)
       : 'todos',
+    communityEnabled: row.comunidad_activa,
   }
 }
 
@@ -273,4 +275,26 @@ export async function transferirTitularidad(
 export async function eliminarServidor(servidorId: string): Promise<void> {
   const { error } = await supabase.rpc('eliminar_servidor', { p_servidor_id: servidorId })
   if (error) throw error
+}
+
+export async function activarComunidad(servidorId: string): Promise<ServerItem> {
+  const { data, error } = await supabase
+    .rpc('activar_comunidad', { p_servidor_id: servidorId })
+    .single<ServidorRow>()
+
+  if (error) throw error
+  if (!data) throw new Error('No se pudo activar la comunidad.')
+
+  return mapServidorToServerItem(data)
+}
+
+export async function desactivarComunidad(servidorId: string): Promise<ServerItem> {
+  const { data, error } = await supabase
+    .rpc('desactivar_comunidad', { p_servidor_id: servidorId })
+    .single<ServidorRow>()
+
+  if (error) throw error
+  if (!data) throw new Error('No se pudo desactivar la comunidad.')
+
+  return mapServidorToServerItem(data)
 }

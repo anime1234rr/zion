@@ -24,6 +24,7 @@ interface ElectronAPI {
   readyToQuit: () => void
   reportError: (info: { message: string; stack?: string; context?: string }) => void
   openExternal: (url: string) => void
+  writeClipboard: (text: string) => Promise<void>
   listScreenSources: () => Promise<ScreenSourcePayload[]>
   selectScreenSource: (sourceId: string, includeAudio: boolean) => void
   checkForUpdates: () => Promise<UpdateInfoPayload | null>
@@ -70,6 +71,14 @@ export function openExternal(url: string): void {
   } else {
     window.open(url, '_blank', 'noopener,noreferrer')
   }
+}
+
+export async function writeClipboard(text: string): Promise<void> {
+  if (window.electronAPI) {
+    await window.electronAPI.writeClipboard(text)
+    return
+  }
+  await navigator.clipboard.writeText(text)
 }
 
 export function listScreenSources(): Promise<ScreenSourcePayload[]> {

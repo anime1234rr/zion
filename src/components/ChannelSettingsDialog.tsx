@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Code2, Hash, Megaphone, Volume2 } from 'lucide-react'
+import { Check, Code2, Copy, Hash, Megaphone, Volume2 } from 'lucide-react'
 
 import {
   actualizarCanal,
@@ -11,6 +11,7 @@ import {
   type ChannelRolePermisos,
 } from '@/lib/channels'
 import { listarRolesDeServidor, type ServerRole } from '@/lib/members'
+import { writeClipboard } from '@/lib/electron-bridge'
 import { cn, getErrorMessage } from '@/lib/utils'
 import type { ChannelItem, ChannelType } from '@/lib/types'
 import { Button } from '@/components/ui/button'
@@ -88,6 +89,7 @@ function ChannelSettingsForm({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
+  const [idCopied, setIdCopied] = useState(false)
 
   const dirty = nombre.trim() !== channel.name || tipo !== channel.type
 
@@ -195,6 +197,27 @@ function ChannelSettingsForm({
               onChange={(event) => setNombre(event.target.value)}
               required
             />
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label>ID del canal</Label>
+            <div className="flex items-center gap-2">
+              <code className="min-w-0 flex-1 truncate rounded-md border border-border bg-muted/30 px-2.5 py-1.5 font-mono text-xs text-muted-foreground">
+                {channel.id}
+              </code>
+              <button
+                type="button"
+                onClick={async () => {
+                  await writeClipboard(channel.id)
+                  setIdCopied(true)
+                  setTimeout(() => setIdCopied(false), 1500)
+                }}
+                className="flex shrink-0 items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs font-medium text-foreground outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50"
+              >
+                {idCopied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
+                {idCopied ? 'Copiado' : 'Copiar'}
+              </button>
+            </div>
           </div>
 
           <div className="flex items-center justify-between border-t border-border pt-4">

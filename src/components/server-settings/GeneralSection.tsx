@@ -19,6 +19,7 @@ import { useAuth } from '@/hooks/use-auth'
 import { actualizarServidor, regenerarInvitacion } from '@/lib/servers'
 import { subirBannerServidor, subirIconoServidor } from '@/lib/storage'
 import { buildInviteLink } from '@/lib/deep-links'
+import { writeClipboard } from '@/lib/electron-bridge'
 import { cn, getErrorMessage } from '@/lib/utils'
 import { listarCanales } from '@/lib/channels'
 import { listarMiembros, listarRolesDeServidor } from '@/lib/members'
@@ -127,7 +128,7 @@ export function GeneralSection({ server, canEdit, canManageInvites, onUpdated }:
 
   async function handleCopyInviteLink() {
     if (!server.inviteCode) return
-    await navigator.clipboard.writeText(buildInviteLink(server.inviteCode))
+    await writeClipboard(buildInviteLink(server.inviteCode))
     setCopiedLink(true)
     setTimeout(() => setCopiedLink(false), 1500)
   }
@@ -387,101 +388,101 @@ export function GeneralSection({ server, canEdit, canManageInvites, onUpdated }:
           </div>
         </div>
 
-        {error && (
-          <p className="text-sm text-destructive" role="alert">
-            {error}
-          </p>
-        )}
-
-        {canEdit ? (
-          <div className="flex items-center gap-3">
-            <Button type="submit" disabled={loading || !nombre.trim() || !dirty}>
-              {loading ? 'Guardando…' : 'Guardar cambios'}
-            </Button>
-            {saved && (
-              <span className="text-sm text-muted-foreground">Guardado ✓</span>
+        {server.inviteCode && canManageInvites && (
+          <div className="w-full overflow-hidden border-t border-border pt-6">
+            <h2 className="text-sm font-semibold text-foreground uppercase">
+              Enlace de invitación
+            </h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Cualquiera con este enlace puede unirse a {server.name}.
+            </p>
+            <div className="mt-3 flex w-full items-center justify-between gap-2 overflow-hidden rounded-lg border border-input bg-muted/40 p-2">
+              <div className="min-w-0 flex-1 overflow-hidden px-1">
+                <code className="min-w-0 truncate font-mono text-xs text-foreground sm:text-sm">
+                  {buildInviteLink(server.inviteCode)}
+                </code>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleRegenerateInvite}
+                disabled={regenerating}
+                className="shrink-0"
+              >
+                <RefreshCw className={cn('size-4', regenerating && 'animate-spin')} />
+                <span className="ml-1.5 hidden sm:inline">Regenerar</span>
+              </Button>
+              <Button type="button" size="sm" onClick={handleCopyInviteLink} className="shrink-0">
+                {copiedLink ? <Check className="size-4" /> : <Copy className="size-4" />}
+                <span className="ml-1.5 hidden sm:inline">{copiedLink ? 'Copiado' : 'Copiar'}</span>
+                <span className="ml-1.5 sm:hidden">{copiedLink ? 'Cop.' : 'Copiar'}</span>
+              </Button>
+            </div>
+            {inviteError && (
+              <p className="mt-1.5 text-xs text-destructive" role="alert">
+                {inviteError}
+              </p>
             )}
           </div>
-        ) : (
-          <p className="text-xs text-muted-foreground">
-            No tenés permiso para editar la configuración de este servidor.
-          </p>
         )}
-      </form>
 
-      {server.inviteCode && canManageInvites && (
-        <div className="mt-8 w-full overflow-hidden border-t border-border pt-6">
+        <div className="w-full border-t border-border pt-6">
           <h2 className="text-sm font-semibold text-foreground uppercase">
-            Enlace de invitación
+            Notificaciones predeterminadas
           </h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Cualquiera con este enlace puede unirse a {server.name}.
+            Nivel de alertas que reciben los miembros nuevos al unirse a {server.name}.
           </p>
-          <div className="mt-3 flex w-full items-center justify-between gap-2 overflow-hidden rounded-lg border border-input bg-muted/40 p-2">
-            <div className="min-w-0 flex-1 overflow-hidden px-1">
-              <code className="min-w-0 truncate font-mono text-xs text-foreground sm:text-sm">
-                {buildInviteLink(server.inviteCode)}
-              </code>
-            </div>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={handleRegenerateInvite}
-              disabled={regenerating}
-              className="shrink-0"
-            >
-              <RefreshCw className={cn('size-4', regenerating && 'animate-spin')} />
-              <span className="ml-1.5 hidden sm:inline">Regenerar</span>
-            </Button>
-            <Button type="button" size="sm" onClick={handleCopyInviteLink} className="shrink-0">
-              {copiedLink ? <Check className="size-4" /> : <Copy className="size-4" />}
-              <span className="ml-1.5 hidden sm:inline">{copiedLink ? 'Copiado' : 'Copiar'}</span>
-              <span className="ml-1.5 sm:hidden">{copiedLink ? 'Cop.' : 'Copiar'}</span>
-            </Button>
-          </div>
-          {inviteError && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild disabled={!canEdit || savingNotif}>
+              <button
+                type="button"
+                className="mt-3 flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-sm font-medium text-foreground outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-60"
+              >
+                {OPCIONES_NOTIFICACIONES.find((o) => o.value === server.defaultNotifications)?.label}
+                <ChevronDown className="size-3.5 text-muted-foreground" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-48">
+              {OPCIONES_NOTIFICACIONES.map((opcion) => (
+                <DropdownMenuItem
+                  key={opcion.value}
+                  onSelect={() => handleChangeDefaultNotifications(opcion.value)}
+                >
+                  {opcion.label}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+          {notifError && (
             <p className="mt-1.5 text-xs text-destructive" role="alert">
-              {inviteError}
+              {notifError}
             </p>
           )}
         </div>
-      )}
 
-      <div className="mt-8 w-full border-t border-border pt-6">
-        <h2 className="text-sm font-semibold text-foreground uppercase">
-          Notificaciones predeterminadas
-        </h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Nivel de alertas que reciben los miembros nuevos al unirse a {server.name}.
-        </p>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild disabled={!canEdit || savingNotif}>
-            <button
-              type="button"
-              className="mt-3 flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-sm font-medium text-foreground outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-60"
-            >
-              {OPCIONES_NOTIFICACIONES.find((o) => o.value === server.defaultNotifications)?.label}
-              <ChevronDown className="size-3.5 text-muted-foreground" />
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="w-48">
-            {OPCIONES_NOTIFICACIONES.map((opcion) => (
-              <DropdownMenuItem
-                key={opcion.value}
-                onSelect={() => handleChangeDefaultNotifications(opcion.value)}
-              >
-                {opcion.label}
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
-        {notifError && (
-          <p className="mt-1.5 text-xs text-destructive" role="alert">
-            {notifError}
-          </p>
-        )}
-      </div>
+        <div className="w-full border-t border-border pt-6">
+          {error && (
+            <p className="mb-3 text-sm text-destructive" role="alert">
+              {error}
+            </p>
+          )}
+
+          {canEdit ? (
+            <div className="flex items-center gap-3">
+              <Button type="submit" disabled={loading || !nombre.trim() || !dirty}>
+                {loading ? 'Guardando…' : 'Guardar cambios'}
+              </Button>
+              {saved && <span className="text-sm text-muted-foreground">Guardado ✓</span>}
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              No tenés permiso para editar la configuración de este servidor.
+            </p>
+          )}
+        </div>
+      </form>
     </div>
   )
 }

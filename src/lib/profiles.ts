@@ -12,6 +12,7 @@ export interface PerfilRow {
   banner_url: string | null
   fondo_url: string | null
   fondo_tipo: string | null
+  es_bot: boolean
   creado_at: string
   actualizado_at: string
 }
@@ -112,6 +113,7 @@ export function mapPerfilToChatUser(row: PerfilRow): ChatUser {
     status: status !== 'offline' && !esPresenciaViva(row.actualizado_at) ? 'offline' : status,
     backgroundUrl: row.fondo_url ?? undefined,
     backgroundType: row.fondo_tipo === 'imagen' || row.fondo_tipo === 'video' ? row.fondo_tipo : undefined,
+    isBot: row.es_bot,
   }
 }
 

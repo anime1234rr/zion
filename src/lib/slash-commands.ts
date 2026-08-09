@@ -38,15 +38,7 @@ export const SLASH_COMANDOS: SlashCommandDef[] = [
     icon: UserCog,
     permiso: 'gestionar_roles',
   },
-  { step: 'kick', comando: '/expulsar', label: 'Expulsar a un miembro', icon: UserX, permiso: 'expulsar_miembros' },
-  { step: 'ban', comando: '/banear', label: 'Banear a un miembro permanentemente', icon: Ban, permiso: 'banear_miembros' },
-  {
-    step: 'tempban',
-    comando: '/banear_temporal',
-    label: 'Banear a un miembro por tiempo limitado',
-    icon: Clock,
-    permiso: 'banear_miembros',
-  },
+  { step: 'warn', comando: '/advertir', label: 'Advertir a un miembro', icon: AlertTriangle, permiso: 'advertir_miembros' },
   {
     step: 'mute',
     comando: '/silenciar',
@@ -54,7 +46,15 @@ export const SLASH_COMANDOS: SlashCommandDef[] = [
     icon: VolumeX,
     permiso: 'silenciar_miembros',
   },
-  { step: 'warn', comando: '/advertir', label: 'Advertir a un miembro', icon: AlertTriangle, permiso: 'advertir_miembros' },
+  { step: 'kick', comando: '/expulsar', label: 'Expulsar a un miembro', icon: UserX, permiso: 'expulsar_miembros' },
+  {
+    step: 'tempban',
+    comando: '/banear_temporal',
+    label: 'Banear a un miembro por tiempo limitado',
+    icon: Clock,
+    permiso: 'banear_miembros',
+  },
+  { step: 'ban', comando: '/banear', label: 'Banear a un miembro permanentemente', icon: Ban, permiso: 'banear_miembros' },
   {
     step: 'clear',
     comando: '/limpiar',

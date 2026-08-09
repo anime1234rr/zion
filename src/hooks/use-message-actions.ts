@@ -1,4 +1,4 @@
-import { Copy, Files, Forward, Link, Pin, PinOff, Pencil, Reply, Trash2 } from 'lucide-react'
+import { Copy, Files, Forward, Link, MessagesSquare, Pin, PinOff, Pencil, Reply, Trash2 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
 export interface MessageAction {
@@ -23,6 +23,8 @@ export interface UseMessageActionsOptions {
   canPin?: boolean
   onPin?: () => void
   onUnpin?: () => void
+  canCreateThread?: boolean
+  onCreateThread?: () => void
 }
 
 export function useMessageActions({
@@ -39,6 +41,8 @@ export function useMessageActions({
   canPin = false,
   onPin,
   onUnpin,
+  canCreateThread = false,
+  onCreateThread,
 }: UseMessageActionsOptions): MessageAction[] {
   const actions: MessageAction[] = []
 
@@ -48,6 +52,10 @@ export function useMessageActions({
 
   actions.push({ key: 'reply', label: 'Responder', icon: Reply, onSelect: onReply })
   actions.push({ key: 'forward', label: 'Reenviar', icon: Forward, onSelect: onForward })
+
+  if (canCreateThread && onCreateThread) {
+    actions.push({ key: 'create-thread', label: 'Crear hilo', icon: MessagesSquare, onSelect: onCreateThread })
+  }
   actions.push({ key: 'copy-content', label: 'Copiar mensaje', icon: Files, onSelect: onCopyContent })
   actions.push({ key: 'copy-link', label: 'Copiar enlace', icon: Link, onSelect: onCopyLink })
   actions.push({ key: 'copy-id', label: 'Copiar ID del mensaje', icon: Copy, onSelect: onCopyId })

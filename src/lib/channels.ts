@@ -87,7 +87,7 @@ export async function listarCanales(
     .from('canales_servidor')
     .select('*')
     .eq('servidor_id', servidorId)
-    .neq('tipo', 'hilo_foro')
+    .not('tipo', 'in', '(hilo_foro,hilo)')
     .order('posicion', { ascending: true })
     .order('creado_at', { ascending: true })
     .returns<CanalRow[]>()

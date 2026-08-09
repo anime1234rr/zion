@@ -9,6 +9,8 @@ export interface ChatUser {
   statusText?: string
   backgroundUrl?: string
   backgroundType?: 'imagen' | 'video'
+  isBot?: boolean
+  isWebhook?: boolean
 }
 
 export type ServerVerificationLevel = 'ninguno' | 'bajo' | 'medio' | 'alto'
@@ -29,6 +31,7 @@ export interface ServerItem {
   verificationLevel: ServerVerificationLevel
   historyRetention: ServerHistoryRetention
   defaultNotifications: ServerDefaultNotifications
+  communityEnabled: boolean
 }
 
 export type ChannelType = 'text' | 'voice' | 'code' | 'announcement' | 'forum'
@@ -56,6 +59,21 @@ export interface CodeBlock {
 export interface ChatAttachment {
   url: string
   type: 'image' | 'video' | 'audio'
+}
+
+export interface MessageEmbedField {
+  name: string
+  value: string
+}
+
+export interface MessageEmbed {
+  title?: string
+  description?: string
+  url?: string
+  color?: string
+  imageUrl?: string
+  footer?: string
+  fields?: MessageEmbedField[]
 }
 
 export interface MessageReaction {
@@ -86,6 +104,7 @@ export interface ChatMessage {
   forwardedFrom?: ForwardedFrom
   pinned?: boolean
   reactions?: MessageReaction[]
+  embed?: MessageEmbed
 }
 
 export type FriendStatus =

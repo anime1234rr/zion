@@ -26,7 +26,7 @@ import { VerificacionSection } from '@/components/server-settings/VerificacionSe
 import { WebhooksSection } from '@/components/server-settings/WebhooksSection'
 import { ExpresionesSection } from '@/components/server-settings/ExpresionesSection'
 import { PlantillaSection } from '@/components/server-settings/PlantillaSection'
-import { ComingSoonSection } from '@/components/server-settings/ComingSoonSection'
+import { ActivarComunidadSection } from '@/components/server-settings/ActivarComunidadSection'
 import { AuditLogSection } from '@/components/server-settings/AuditLogSection'
 import { DangerZoneSection } from '@/components/server-settings/DangerZoneSection'
 import { AppBackgroundLayer } from '@/components/AppBackgroundLayer'
@@ -190,7 +190,11 @@ export function ServerSettingsPanel({
             <ExpresionesSection server={server} canEdit={hasPermission('gestionar_servidor')} />
           )}
           {active === 'apps' && (
-            <WebhooksSection server={server} canEdit={hasPermission('gestionar_servidor')} />
+            <WebhooksSection
+              server={server}
+              currentUserId={currentUserId}
+              canEdit={hasPermission('gestionar_servidor')}
+            />
           )}
           {active === 'moderacion' && (
             <VerificacionSection
@@ -203,10 +207,10 @@ export function ServerSettingsPanel({
             <AuditLogSection key={server.id} server={server} />
           )}
           {active === 'comunidad' && (
-            <ComingSoonSection
-              icon={Rocket}
-              title="Activar comunidad"
-              description="Convertir este servidor en un espacio público y estructurado (con canales de reglas y anuncios verificados) todavía no está disponible."
+            <ActivarComunidadSection
+              server={server}
+              canEdit={isOwner || hasPermission('gestionar_servidor')}
+              onUpdated={onServerUpdated}
             />
           )}
           {active === 'zona-peligro' && isOwner && (

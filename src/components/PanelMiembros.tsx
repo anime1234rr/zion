@@ -207,6 +207,11 @@ function MemberGroup({
                   </Avatar>
                   <span className="flex min-w-0 items-center gap-1 truncate text-sm text-sidebar-foreground">
                     <span className="truncate">{displayMemberName(member)}</span>
+                    {member.user.isBot && (
+                      <span className="flex shrink-0 items-center rounded bg-primary px-1 py-px text-[9px] font-semibold uppercase text-primary-foreground">
+                        Bot
+                      </span>
+                    )}
                     {member.user.id === server.ownerId && (
                       <Crown className="size-3 shrink-0 text-muted-foreground" />
                     )}

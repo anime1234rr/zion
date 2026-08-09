@@ -8,7 +8,7 @@ import {
   listarMensajes,
   suscribirseACanal,
 } from '@/lib/messages'
-import { bloquearHiloForo, eliminarHiloForo, fijarHiloForo, type ForumThread } from '@/lib/forums'
+import { bloquearHiloDeCanal, eliminarHiloDeCanal, fijarHiloDeCanal, type ChannelThread } from '@/lib/threads'
 import { cn, getErrorMessage } from '@/lib/utils'
 import type {
   ChannelItem,
@@ -21,8 +21,8 @@ import type {
 import { ChatPrincipal } from '@/components/ChatPrincipal'
 import { ForwardMessageDialog } from '@/components/ForwardMessageDialog'
 
-interface ForumThreadViewProps {
-  thread: ForumThread
+interface ChannelThreadViewProps {
+  thread: ChannelThread
   server: ServerItem
   currentUserId: string
   canManage: boolean
@@ -31,7 +31,7 @@ interface ForumThreadViewProps {
   onDeleted: () => void
 }
 
-export function ForumThreadView({
+export function ChannelThreadView({
   thread,
   server,
   currentUserId,
@@ -39,7 +39,7 @@ export function ForumThreadView({
   onBack,
   onThreadChanged,
   onDeleted,
-}: ForumThreadViewProps) {
+}: ChannelThreadViewProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [replyingTo, setReplyingTo] = useState<ReplyPreview | null>(null)
   const [highlightMessageId, setHighlightMessageId] = useState<string | null>(null)
@@ -94,6 +94,7 @@ export function ForumThreadView({
       const nuevo = await enviarMensaje(thread.id, currentUserId, message)
       setMessages((prev) => (prev.some((m) => m.id === nuevo.id) ? prev : [...prev, nuevo]))
       setReplyingTo(null)
+      onThreadChanged()
     } catch (err) {
       console.error('No se pudo enviar el mensaje', err)
     }
@@ -128,7 +129,7 @@ export function ForumThreadView({
   async function handleTogglePin() {
     setActionError(null)
     try {
-      await fijarHiloForo(thread.id, !thread.pinned)
+      await fijarHiloDeCanal(thread.id, !thread.pinned)
       onThreadChanged()
     } catch (err) {
       setActionError(getErrorMessage(err))
@@ -138,7 +139,7 @@ export function ForumThreadView({
   async function handleToggleLock() {
     setActionError(null)
     try {
-      await bloquearHiloForo(thread.id, !thread.locked)
+      await bloquearHiloDeCanal(thread.id, !thread.locked)
       onThreadChanged()
     } catch (err) {
       setActionError(getErrorMessage(err))
@@ -153,7 +154,7 @@ export function ForumThreadView({
     setActionError(null)
     setDeleting(true)
     try {
-      await eliminarHiloForo(server.id, thread.id)
+      await eliminarHiloDeCanal(server.id, thread.id)
       onDeleted()
     } catch (err) {
       setActionError(getErrorMessage(err))
@@ -161,7 +162,7 @@ export function ForumThreadView({
     }
   }
 
-  const channel: ChannelItem = { id: thread.id, name: thread.title, type: 'text' }
+  const channel: ChannelItem = { id: thread.id, name: thread.nombre, type: 'text' }
 
   return (
     <div className="flex h-full min-w-0 flex-1 flex-col">
@@ -175,7 +176,7 @@ export function ForumThreadView({
           Volver
         </button>
         <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
-          {thread.title}
+          {thread.nombre}
         </span>
         {canManage && (
           <div className="flex shrink-0 items-center gap-1">
@@ -242,7 +243,7 @@ export function ForumThreadView({
         onDeleteMessage={handleDeleteMessage}
         onReplyMessage={handleReplyMessage}
         onForwardMessage={(message) =>
-          setForwardMessage({ message, sourceLabel: `${thread.title} en ${server.name}` })
+          setForwardMessage({ message, sourceLabel: `${thread.nombre} en ${server.name}` })
         }
         replyingTo={replyingTo}
         onCancelReply={() => setReplyingTo(null)}

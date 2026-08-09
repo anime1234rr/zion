@@ -25,6 +25,7 @@ import {
 } from 'lucide-react'
 
 import { buildChannelMessageLink } from '@/lib/deep-links'
+import { writeClipboard } from '@/lib/electron-bridge'
 import { renderMessageContent } from '@/lib/render-message-content'
 import { cn, getErrorMessage } from '@/lib/utils'
 import { formatFencedCode, parseFencedCode } from '@/lib/code-fence'
@@ -32,6 +33,7 @@ import { groupMessages } from '@/lib/message-grouping'
 import { CHAT_ADJUNTO_ACCEPT, subirArchivoChat, subirNotaDeVoz } from '@/lib/storage'
 import { alternarReaccionMensaje, desfijarMensaje, fijarMensaje } from '@/lib/messages'
 import { listarMiembrosParaMencion, type MentionableMember, type ServerRole } from '@/lib/members'
+import type { ChannelThread } from '@/lib/threads'
 import { crearNotificacionMencion } from '@/lib/notifications'
 import { tieneAlgunComandoDeSlash } from '@/lib/slash-commands'
 import { useMessageActions } from '@/hooks/use-message-actions'
@@ -86,6 +88,10 @@ import { VoiceMessageRecorder } from '@/components/VoiceMessageRecorder'
 import { VoiceMessagePlayer } from '@/components/VoiceMessagePlayer'
 import { SearchDialog } from '@/components/SearchDialog'
 import { SlashCommandPanel } from '@/components/SlashCommandPanel'
+import { ChannelThreadView } from '@/components/ChannelThreadView'
+import { MessageEmbedCard } from '@/components/MessageEmbedCard'
+import { ThreadsListDialog } from '@/components/ThreadsListDialog'
+import { CreateThreadDialog } from '@/components/CreateThreadDialog'
 
 const EVERYONE_MENTION_PATTERN = /(^|[^a-zA-Z0-9_])@(todos|aqu[ií])([^a-zA-Z0-9_]|$)/i
 const EXTERNAL_LINK_PATTERN = /https?:\/\//i
@@ -107,7 +113,7 @@ function CodeBlock({ language, code }: CodeBlockData) {
   const [copied, setCopied] = useState(false)
 
   async function handleCopy() {
-    await navigator.clipboard.writeText(code)
+    await writeClipboard(code)
     setCopied(true)
     setTimeout(() => setCopied(false), 1500)
   }
@@ -152,6 +158,8 @@ interface MessageRowProps {
   onForwardMessage: (message: ChatMessage) => void
   onPinMessage: (messageId: string) => void
   onUnpinMessage: (messageId: string) => void
+  canCreateThread: boolean
+  onCreateThread: (message: ChatMessage) => void
   highlighted: boolean
 }
 
@@ -171,6 +179,8 @@ function MessageRow({
   onForwardMessage,
   onPinMessage,
   onUnpinMessage,
+  canCreateThread,
+  onCreateThread,
   highlighted,
 }: MessageRowProps) {
   const [editing, setEditing] = useState(false)
@@ -188,14 +198,16 @@ function MessageRow({
     onDelete: () => onDeleteMessage(message.id),
     onReply: () => onReplyMessage(message),
     onForward: () => onForwardMessage(message),
-    onCopyId: () => navigator.clipboard.writeText(message.id),
+    onCopyId: () => writeClipboard(message.id),
     onCopyLink: () =>
-      navigator.clipboard.writeText(buildChannelMessageLink(serverId, channelId, message.id)),
-    onCopyContent: () => navigator.clipboard.writeText(messageToRawText(message)),
+      writeClipboard(buildChannelMessageLink(serverId, channelId, message.id)),
+    onCopyContent: () => writeClipboard(messageToRawText(message)),
     isPinned: message.pinned,
     canPin: canPinMessages,
     onPin: () => onPinMessage(message.id),
     onUnpin: () => onUnpinMessage(message.id),
+    canCreateThread,
+    onCreateThread: () => onCreateThread(message),
   })
 
   function saveEdit() {
@@ -311,6 +323,7 @@ function MessageRow({
               {message.code && (
                 <CodeBlock language={message.code.language} code={message.code.code} />
               )}
+              {message.embed && <MessageEmbedCard embed={message.embed} />}
               {message.attachment && message.attachment.type === 'audio' && (
                 <VoiceMessagePlayer url={message.attachment.url} className="mt-1" />
               )}
@@ -444,6 +457,7 @@ interface ChatPrincipalProps {
   previewRole?: ServerRole | null
   previewPermissions?: ChannelPreviewPermissions
   previewLoading?: boolean
+  disableThreads?: boolean
 }
 
 export function ChatPrincipal({
@@ -464,6 +478,7 @@ export function ChatPrincipal({
   highlightMessageId,
   onNavigateToServer,
   onJumpToChannelMessage,
+  disableThreads = false,
   previewRole,
   previewPermissions,
   previewLoading,
@@ -477,6 +492,10 @@ export function ChatPrincipal({
   const [pinnedDialogOpen, setPinnedDialogOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
   const [localHighlightId, setLocalHighlightId] = useState<string | null>(null)
+  const [activeThread, setActiveThread] = useState<ChannelThread | null>(null)
+  const [threadsListOpen, setThreadsListOpen] = useState(false)
+  const [createThreadOpen, setCreateThreadOpen] = useState(false)
+  const [createThreadMessage, setCreateThreadMessage] = useState<ChatMessage | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const scrollBottomRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<RichComposerInputHandle>(null)
@@ -611,6 +630,11 @@ export function ChatPrincipal({
     } catch (err) {
       console.error('No se pudo desfijar el mensaje', err)
     }
+  }
+
+  function handleCreateThreadFromMessage(message: ChatMessage) {
+    setCreateThreadMessage(message)
+    setCreateThreadOpen(true)
   }
 
   function handleJumpToMessage(messageId: string) {
@@ -767,6 +791,20 @@ export function ChatPrincipal({
     setDraft((prev) => `${prev}${prev ? '\n' : ''}\`\`\`ts\n\n\`\`\``)
   }
 
+  if (activeThread) {
+    return (
+      <ChannelThreadView
+        thread={activeThread}
+        server={server}
+        currentUserId={currentUserId}
+        canManage={isOwner || hasPermission('gestionar_canales')}
+        onBack={() => setActiveThread(null)}
+        onThreadChanged={() => {}}
+        onDeleted={() => setActiveThread(null)}
+      />
+    )
+  }
+
   if (!channelPermissionsLoading && !canView) {
     return (
       <section className="flex h-full min-w-0 flex-1 flex-col items-center justify-center gap-2 bg-background text-center">
@@ -809,6 +847,22 @@ export function ChatPrincipal({
 
         <div className="ml-auto flex shrink-0 items-center gap-1">
           <NotificationsDropdown userId={currentUserId} onNavigateToServer={onNavigateToServer} />
+
+          {!disableThreads && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={() => setThreadsListOpen(true)}
+                  aria-label="Hilos"
+                  className="flex size-8 items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50"
+                >
+                  <MessagesSquare className="size-4" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">Hilos</TooltipContent>
+            </Tooltip>
+          )}
 
           <Tooltip>
             <TooltipTrigger asChild>
@@ -865,41 +919,62 @@ export function ChatPrincipal({
               key={`${group.author.id}-${index}`}
               className="group/row flex items-start gap-3 rounded-md px-2 py-0.5 hover:bg-muted/30"
             >
-              <UserProfileCard
-                userId={group.author.id}
-                server={server}
-                currentUserId={currentUserId}
-                onMessageUser={onMessageUser}
-              >
-                <button
-                  type="button"
-                  className="mt-0.5 shrink-0 rounded-full outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+              {group.author.isWebhook ? (
+                <Avatar size="lg" className="mt-0.5 shrink-0">
+                  {group.author.avatarUrl && <AvatarImage src={group.author.avatarUrl} />}
+                  <AvatarFallback>{group.author.name.slice(0, 2).toUpperCase()}</AvatarFallback>
+                </Avatar>
+              ) : (
+                <UserProfileCard
+                  userId={group.author.id}
+                  server={server}
+                  currentUserId={currentUserId}
+                  onMessageUser={onMessageUser}
                 >
-                  <Avatar size="lg">
-                    {group.author.avatarUrl && (
-                      <AvatarImage src={group.author.avatarUrl} />
-                    )}
-                    <AvatarFallback>
-                      {group.author.name.slice(0, 2).toUpperCase()}
-                    </AvatarFallback>
-                  </Avatar>
-                </button>
-              </UserProfileCard>
+                  <button
+                    type="button"
+                    className="mt-0.5 shrink-0 rounded-full outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+                  >
+                    <Avatar size="lg">
+                      {group.author.avatarUrl && (
+                        <AvatarImage src={group.author.avatarUrl} />
+                      )}
+                      <AvatarFallback>
+                        {group.author.name.slice(0, 2).toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+                  </button>
+                </UserProfileCard>
+              )}
               <div className="min-w-0 flex-1">
                 <div className="flex items-baseline gap-2">
-                  <UserProfileCard
-                    userId={group.author.id}
-                    server={server}
-                    currentUserId={currentUserId}
-                    onMessageUser={onMessageUser}
-                  >
-                    <button
-                      type="button"
-                      className="rounded text-sm font-semibold text-foreground outline-none hover:underline focus-visible:ring-3 focus-visible:ring-ring/50"
+                  {group.author.isWebhook ? (
+                    <span className="text-sm font-semibold text-foreground">{group.author.name}</span>
+                  ) : (
+                    <UserProfileCard
+                      userId={group.author.id}
+                      server={server}
+                      currentUserId={currentUserId}
+                      onMessageUser={onMessageUser}
                     >
-                      {group.author.name}
-                    </button>
-                  </UserProfileCard>
+                      <button
+                        type="button"
+                        className="rounded text-sm font-semibold text-foreground outline-none hover:underline focus-visible:ring-3 focus-visible:ring-ring/50"
+                      >
+                        {group.author.name}
+                      </button>
+                    </UserProfileCard>
+                  )}
+                  {group.author.isBot && (
+                    <span className="flex items-center rounded bg-primary px-1.5 py-0.5 text-[10px] font-semibold uppercase text-primary-foreground">
+                      Bot
+                    </span>
+                  )}
+                  {group.author.isWebhook && (
+                    <span className="flex items-center rounded bg-muted-foreground/70 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-background">
+                      App
+                    </span>
+                  )}
                   <span className="text-xs text-muted-foreground">
                     {group.timestamp}
                   </span>
@@ -922,6 +997,8 @@ export function ChatPrincipal({
                     onForwardMessage={onForwardMessage}
                     onPinMessage={handlePinMessage}
                     onUnpinMessage={handleUnpinMessage}
+                    canCreateThread={!disableThreads && canSendMessages}
+                    onCreateThread={handleCreateThreadFromMessage}
                     highlighted={highlightMessageId === message.id || localHighlightId === message.id}
                   />
                 ))}
@@ -1228,6 +1305,45 @@ export function ChatPrincipal({
           }
         }}
       />
+
+      {!disableThreads && (
+        <>
+          <ThreadsListDialog
+            open={threadsListOpen}
+            onOpenChange={setThreadsListOpen}
+            channelId={channel.id}
+            onSelectThread={(thread) => {
+              setThreadsListOpen(false)
+              setActiveThread(thread)
+            }}
+          />
+
+          <CreateThreadDialog
+            open={createThreadOpen}
+            onOpenChange={(open) => {
+              setCreateThreadOpen(open)
+              if (!open) setCreateThreadMessage(null)
+            }}
+            channelId={channel.id}
+            originMessage={createThreadMessage}
+            onCreated={(threadId, nombre) => {
+              setCreateThreadOpen(false)
+              setCreateThreadMessage(null)
+              setActiveThread({
+                id: threadId,
+                nombre,
+                pinned: false,
+                locked: false,
+                createdAt: new Date().toISOString(),
+                author: { id: currentUserId, name: '', status: 'offline' },
+                originMessageId: createThreadMessage?.id ?? null,
+                messageCount: 0,
+                lastActivityAt: new Date().toISOString(),
+              })
+            }}
+          />
+        </>
+      )}
     </section>
   )
 }
