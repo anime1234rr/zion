@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import {
   checkForUpdates,
@@ -11,6 +11,7 @@ import {
   type UpdateInfoPayload,
   type UpdateProgressPayload,
 } from '@/lib/electron-bridge'
+import { pushToast } from '@/hooks/use-toasts'
 
 export type AppUpdateStatus = 'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'error'
 
@@ -20,6 +21,18 @@ export function useAppUpdate() {
   const [progress, setProgress] = useState<UpdateProgressPayload | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [everShown, setEverShown] = useState(false)
+  const notifiedVersionRef = useRef<string | null>(null)
+
+  function notifyAvailable(result: UpdateInfoPayload) {
+    if (notifiedVersionRef.current === result.version) return
+    notifiedVersionRef.current = result.version
+    pushToast({
+      title: 'Actualización disponible',
+      description: `Zion v${result.version} ya está lista para instalar.`,
+      icon: 'sistema',
+      onClick: download,
+    })
+  }
 
   function resolveCheck() {
     return checkForUpdates().then((result) => {
@@ -27,6 +40,7 @@ export function useAppUpdate() {
         setInfo(result)
         setStatus('available')
         setEverShown(true)
+        notifyAvailable(result)
       } else {
         setStatus((prev) => (prev === 'checking' ? 'idle' : prev))
       }
@@ -47,6 +61,7 @@ export function useAppUpdate() {
       setError(null)
       setStatus('available')
       setEverShown(true)
+      notifyAvailable(result)
     })
 
     const unsubProgress = onUpdateProgress((value) => {

@@ -278,6 +278,15 @@ if (!gotLock) {
           log.error('No se pudo verificar actualizaciones', err)
         })
       })
+
+      setInterval(
+        () => {
+          autoUpdater.checkForUpdates().catch((err) => {
+            log.error('No se pudo verificar actualizaciones', err)
+          })
+        },
+        4 * 60 * 60 * 1000
+      )
     }
   })
 }
