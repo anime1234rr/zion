@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Check,
   Code2,
@@ -79,8 +79,6 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { NotificationsDropdown } from '@/components/NotificationsDropdown'
 import { UserProfileCard } from '@/components/UserProfileCard'
 import { PinnedMessagesDialog } from '@/components/PinnedMessagesDialog'
-import { MediaViewerDialog } from '@/components/MediaViewerDialog'
-import { EmojiPicker } from '@/components/EmojiPicker'
 import { EmojiAutocomplete } from '@/components/EmojiAutocomplete'
 import { MentionAutocomplete } from '@/components/MentionAutocomplete'
 import { MessageReactions } from '@/components/MessageReactions'
@@ -92,6 +90,13 @@ import { ChannelThreadView } from '@/components/ChannelThreadView'
 import { MessageEmbedCard } from '@/components/MessageEmbedCard'
 import { ThreadsListDialog } from '@/components/ThreadsListDialog'
 import { CreateThreadDialog } from '@/components/CreateThreadDialog'
+
+const MediaViewerDialog = lazy(() =>
+  import('@/components/MediaViewerDialog').then((m) => ({ default: m.MediaViewerDialog }))
+)
+const EmojiPicker = lazy(() =>
+  import('@/components/EmojiPicker').then((m) => ({ default: m.EmojiPicker }))
+)
 
 const EVERYONE_MENTION_PATTERN = /(^|[^a-zA-Z0-9_])@(todos|aqu[ií])([^a-zA-Z0-9_]|$)/i
 const EXTERNAL_LINK_PATTERN = /https?:\/\//i
@@ -375,7 +380,9 @@ function MessageRow({
                 </button>
               </PopoverTrigger>
               <PopoverContent side="top" align="end" className="w-auto p-0">
-                <EmojiPicker onSelect={handleToggleReaction} />
+                <Suspense fallback={null}>
+                  <EmojiPicker onSelect={handleToggleReaction} />
+                </Suspense>
               </PopoverContent>
             </Popover>
           )}
@@ -420,12 +427,14 @@ function MessageRow({
       </ContextMenu>
 
       {viewerOpen && (
-        <MediaViewerDialog
-          open={viewerOpen}
-          onOpenChange={setViewerOpen}
-          attachment={message.attachment ?? null}
-          onForward={() => onForwardMessage(message)}
-        />
+        <Suspense fallback={null}>
+          <MediaViewerDialog
+            open={viewerOpen}
+            onOpenChange={setViewerOpen}
+            attachment={message.attachment ?? null}
+            onForward={() => onForwardMessage(message)}
+          />
+        </Suspense>
       )}
     </>
   )
@@ -502,7 +511,7 @@ export function ChatPrincipal({
   const dragCounterRef = useRef(0)
   const sendVoiceOnStopRef = useRef(false)
   const HeaderIcon = channelIcon[channel.type]
-  const groups = groupMessages(messages)
+  const groups = useMemo(() => groupMessages(messages), [messages])
   const { isOwner: realIsOwner, hasPermission: realHasPermission } = useServerPermissions(
     server,
     currentUserId
@@ -767,7 +776,6 @@ export function ChatPrincipal({
     if (!pendingVoiceBlob || !sendVoiceOnStopRef.current) return
     sendVoiceOnStopRef.current = false
     submitDraft()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingVoiceBlob])
 
   function handleSubmit(event: React.FormEvent) {
@@ -1220,10 +1228,12 @@ export function ChatPrincipal({
               <TooltipContent side="top">Emoji</TooltipContent>
             </Tooltip>
             <PopoverContent side="top" align="end" className="w-auto p-0">
-              <EmojiPicker
-                onSelect={(emoji) => setDraft((prev) => prev + emoji)}
-                customEmojis={customEmojiList}
-              />
+              <Suspense fallback={null}>
+                <EmojiPicker
+                  onSelect={(emoji) => setDraft((prev) => prev + emoji)}
+                  customEmojis={customEmojiList}
+                />
+              </Suspense>
             </PopoverContent>
           </Popover>
 

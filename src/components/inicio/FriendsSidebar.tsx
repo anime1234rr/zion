@@ -14,6 +14,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Input } from '@/components/ui/input'
 import { FriendRow } from '@/components/inicio/FriendRow'
 import { PerfilUsuario } from '@/components/PerfilUsuario'
+import { UserProfileCard } from '@/components/UserProfileCard'
 
 type Tab = 'online' | 'todos' | 'pendientes' | 'bloqueados'
 
@@ -77,7 +78,6 @@ export function FriendsSidebar({
       unsubFriends()
       unsubConversations()
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUserId])
 
   useEffect(() => {
@@ -217,23 +217,42 @@ export function FriendsSidebar({
                 </p>
                 <div className="flex flex-col gap-0.5">
                   {conversations.map((conversation) => (
-                    <button
+                    <div
                       key={conversation.id}
-                      type="button"
+                      role="button"
+                      tabIndex={0}
                       onClick={() => onSelectConversation(conversation.id, conversation.otherUser)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault()
+                          onSelectConversation(conversation.id, conversation.otherUser)
+                        }
+                      }}
                       className={cn(
                         'flex items-center gap-2.5 rounded-lg px-2 py-2 text-left outline-none hover:bg-muted/50 focus-visible:ring-3 focus-visible:ring-ring/50',
                         activeConversationId === conversation.id && 'bg-muted/70'
                       )}
                     >
-                      <Avatar>
-                        {conversation.otherUser.avatarUrl && (
-                          <AvatarImage src={conversation.otherUser.avatarUrl} />
-                        )}
-                        <AvatarFallback>
-                          {conversation.otherUser.name.slice(0, 2).toUpperCase()}
-                        </AvatarFallback>
-                      </Avatar>
+                      <UserProfileCard
+                        userId={conversation.otherUser.id}
+                        currentUserId={currentUserId}
+                        onMessageUser={onMessageUser}
+                      >
+                        <button
+                          type="button"
+                          onClick={(event) => event.stopPropagation()}
+                          className="shrink-0 rounded-full outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+                        >
+                          <Avatar>
+                            {conversation.otherUser.avatarUrl && (
+                              <AvatarImage src={conversation.otherUser.avatarUrl} />
+                            )}
+                            <AvatarFallback>
+                              {conversation.otherUser.name.slice(0, 2).toUpperCase()}
+                            </AvatarFallback>
+                          </Avatar>
+                        </button>
+                      </UserProfileCard>
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-medium text-foreground">
                           {conversation.otherUser.name}
@@ -247,7 +266,7 @@ export function FriendsSidebar({
                       {conversation.unreadCount > 0 && (
                         <span className="size-2 shrink-0 rounded-full bg-primary" />
                       )}
-                    </button>
+                    </div>
                   ))}
                 </div>
                 <p className="mt-3 mb-1 px-1 text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
@@ -269,6 +288,7 @@ export function FriendsSidebar({
                   <FriendRow
                     key={friend.id}
                     friend={friend}
+                    currentUserId={currentUserId}
                     onMessage={onMessageUser}
                     onChanged={reload}
                   />

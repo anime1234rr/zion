@@ -12,6 +12,9 @@ export default defineConfig({
   define: {
     __APP_VERSION__: JSON.stringify(version),
   },
+  build: {
+    target: 'esnext',
+  },
   plugins: [
     react(),
     tailwindcss(),

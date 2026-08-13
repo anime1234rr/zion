@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import {
   Headphones,
   HeadphoneOff,
@@ -29,10 +29,13 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import {
-  AccountSettingsPanel,
-  type AccountSettingsSectionId,
-} from '@/components/account-settings/AccountSettingsPanel'
+import type { AccountSettingsSectionId } from '@/components/account-settings/AccountSettingsPanel'
+
+const AccountSettingsPanel = lazy(() =>
+  import('@/components/account-settings/AccountSettingsPanel').then((m) => ({
+    default: m.AccountSettingsPanel,
+  }))
+)
 
 const statusColor: Record<UserStatus, string> = {
   online: 'bg-online',
@@ -200,13 +203,15 @@ export function PerfilUsuario({
         </DropdownMenu>
       </div>
 
-      <AccountSettingsPanel
-        open={accountSettingsOpen}
-        onOpenChange={setAccountSettingsOpen}
-        initialSection={accountSettingsSection}
-        currentUser={user}
-        onProfileUpdated={(updated) => onProfileUpdated?.(updated)}
-      />
+      <Suspense fallback={null}>
+        <AccountSettingsPanel
+          open={accountSettingsOpen}
+          onOpenChange={setAccountSettingsOpen}
+          initialSection={accountSettingsSection}
+          currentUser={user}
+          onProfileUpdated={(updated) => onProfileUpdated?.(updated)}
+        />
+      </Suspense>
     </div>
   )
 }

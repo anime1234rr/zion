@@ -25,6 +25,16 @@ interface ElectronAPI {
   reportError: (info: { message: string; stack?: string; context?: string }) => void
   openExternal: (url: string) => void
   writeClipboard: (text: string) => Promise<void>
+  isWindowFocused: () => Promise<boolean>
+  showNotification: (payload: { title: string; body?: string }) => Promise<number>
+  onNotificationClicked: (callback: (id: number) => void) => () => void
+  setBadgeCount: (count: number, overlayIconDataUrl: string | null) => void
+  onToggleMuteShortcut: (callback: () => void) => () => void
+  onToggleDeafenShortcut: (callback: () => void) => () => void
+  onIdle: (callback: () => void) => () => void
+  onActive: (callback: () => void) => () => void
+  getStartOnLogin: () => Promise<boolean>
+  setStartOnLogin: (enabled: boolean) => void
   listScreenSources: () => Promise<ScreenSourcePayload[]>
   selectScreenSource: (sourceId: string, includeAudio: boolean) => void
   checkForUpdates: () => Promise<UpdateInfoPayload | null>
@@ -79,6 +89,46 @@ export async function writeClipboard(text: string): Promise<void> {
     return
   }
   await navigator.clipboard.writeText(text)
+}
+
+export function isWindowFocused(): Promise<boolean> {
+  return window.electronAPI?.isWindowFocused() ?? Promise.resolve(document.hasFocus())
+}
+
+export function showNativeNotification(payload: { title: string; body?: string }): Promise<number | null> {
+  return window.electronAPI?.showNotification(payload) ?? Promise.resolve(null)
+}
+
+export function onNotificationClicked(callback: (id: number) => void): () => void {
+  return window.electronAPI?.onNotificationClicked(callback) ?? (() => {})
+}
+
+export function setBadgeCount(count: number, overlayIconDataUrl: string | null): void {
+  window.electronAPI?.setBadgeCount(count, overlayIconDataUrl)
+}
+
+export function onToggleMuteShortcut(callback: () => void): () => void {
+  return window.electronAPI?.onToggleMuteShortcut(callback) ?? (() => {})
+}
+
+export function onToggleDeafenShortcut(callback: () => void): () => void {
+  return window.electronAPI?.onToggleDeafenShortcut(callback) ?? (() => {})
+}
+
+export function onIdle(callback: () => void): () => void {
+  return window.electronAPI?.onIdle(callback) ?? (() => {})
+}
+
+export function onActive(callback: () => void): () => void {
+  return window.electronAPI?.onActive(callback) ?? (() => {})
+}
+
+export function getStartOnLogin(): Promise<boolean> {
+  return window.electronAPI?.getStartOnLogin() ?? Promise.resolve(false)
+}
+
+export function setStartOnLogin(enabled: boolean): void {
+  window.electronAPI?.setStartOnLogin(enabled)
 }
 
 export function listScreenSources(): Promise<ScreenSourcePayload[]> {

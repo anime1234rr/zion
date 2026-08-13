@@ -1,4 +1,18 @@
-import { app, BrowserWindow, clipboard, desktopCapturer, ipcMain, Menu, session, shell } from 'electron'
+import {
+  app,
+  BrowserWindow,
+  clipboard,
+  desktopCapturer,
+  globalShortcut,
+  ipcMain,
+  Menu,
+  nativeImage,
+  Notification,
+  powerMonitor,
+  session,
+  shell,
+  Tray,
+} from 'electron'
 import electronUpdater, { type ProgressInfo, type UpdateInfo } from 'electron-updater'
 import log from 'electron-log'
 import path from 'node:path'
@@ -58,11 +72,19 @@ const initialDeepLink =
   process.argv.find((arg) => arg.startsWith(`${PROTOCOLO}://`)) ?? null
 
 let win: BrowserWindow | null = null
+let tray: Tray | null = null
 
 let allowClose = false
 let quitAndInstallPending = false
+let isQuitting = false
 let pendingScreenSourceId: string | null = null
 let pendingScreenAudio = false
+let notificationSeq = 0
+
+function requestQuit() {
+  isQuitting = true
+  win?.close()
+}
 function createWindow() {
   win = new BrowserWindow({
     width: 1280,
@@ -87,6 +109,12 @@ function createWindow() {
 
     if (quitAndInstallPending) {
       allowClose = true
+      return
+    }
+
+    if (!isQuitting && tray) {
+      event.preventDefault()
+      win.hide()
       return
     }
 
@@ -156,6 +184,55 @@ if (!gotLock) {
     clipboard.writeText(text)
   })
 
+  ipcMain.handle('zion:is-window-focused', () => win?.isFocused() ?? false)
+
+  ipcMain.handle('zion:get-start-on-login', () => app.getLoginItemSettings().openAtLogin)
+
+  ipcMain.on('zion:set-start-on-login', (_event, enabled: boolean) => {
+    app.setLoginItemSettings({ openAtLogin: enabled })
+  })
+
+  ipcMain.on(
+    'zion:set-badge-count',
+    (_event, count: number, overlayIconDataUrl: string | null) => {
+      if (process.platform === 'linux') {
+        app.setBadgeCount(count)
+        return
+      }
+      if (process.platform === 'darwin') {
+        app.dock?.setBadge(count > 0 ? String(count) : '')
+        return
+      }
+      if (process.platform === 'win32' && win) {
+        if (count > 0 && overlayIconDataUrl) {
+          win.setOverlayIcon(nativeImage.createFromDataURL(overlayIconDataUrl), `${count} no leídos`)
+        } else {
+          win.setOverlayIcon(null, '')
+        }
+      }
+    }
+  )
+
+  ipcMain.handle(
+    'zion:show-notification',
+    (_event, payload: { title: string; body?: string }) => {
+      const id = ++notificationSeq
+      if (!Notification.isSupported()) return id
+
+      const notification = new Notification({
+        title: payload.title,
+        body: payload.body,
+      })
+      notification.on('click', () => {
+        win?.show()
+        win?.focus()
+        win?.webContents.send('zion-notification-clicked', id)
+      })
+      notification.show()
+      return id
+    }
+  )
+
   ipcMain.handle('zion:check-for-updates', async () => {
     if (!app.isPackaged) return null
     try {
@@ -216,6 +293,34 @@ if (!gotLock) {
     }
   })
 
+  app.on('before-quit', () => {
+    isQuitting = true
+    globalShortcut.unregisterAll()
+  })
+
+  async function createTray() {
+    const icon = await app.getFileIcon(process.execPath)
+    tray = new Tray(icon)
+    tray.setToolTip('Zion')
+    tray.setContextMenu(
+      Menu.buildFromTemplate([
+        {
+          label: 'Abrir Zion',
+          click: () => {
+            win?.show()
+            win?.focus()
+          },
+        },
+        { type: 'separator' },
+        { label: 'Salir', click: () => requestQuit() },
+      ])
+    )
+    tray.on('double-click', () => {
+      win?.show()
+      win?.focus()
+    })
+  }
+
   app.whenReady().then(() => {
     log.info('App lista, version', app.getVersion())
 
@@ -267,6 +372,26 @@ if (!gotLock) {
 
     createWindow()
     log.info('Ventana principal creada')
+
+    createTray().catch((err) => {
+      log.error('No se pudo crear el ícono de la bandeja', err)
+    })
+
+    globalShortcut.register('CommandOrControl+Shift+M', () => {
+      win?.webContents.send('zion-toggle-mute')
+    })
+    globalShortcut.register('CommandOrControl+Shift+D', () => {
+      win?.webContents.send('zion-toggle-deafen')
+    })
+
+    const IDLE_THRESHOLD_SECONDS = 5 * 60
+    let isIdle = false
+    setInterval(() => {
+      const shouldBeIdle = powerMonitor.getSystemIdleTime() >= IDLE_THRESHOLD_SECONDS
+      if (shouldBeIdle === isIdle) return
+      isIdle = shouldBeIdle
+      win?.webContents.send(shouldBeIdle ? 'zion-idle' : 'zion-active')
+    }, 30_000)
 
     win?.webContents.on('did-fail-load', (_event, errorCode, errorDescription) => {
       log.error('La ventana falló al cargar', { errorCode, errorDescription })

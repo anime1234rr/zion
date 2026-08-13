@@ -32,6 +32,7 @@ import type { ServerRole } from '@/lib/members'
 import type { ChannelItem, ServerItem } from '@/lib/types'
 import { Avatar, AvatarBadge, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { ControlButton } from '@/components/ControlButton'
 import { VideoTile } from '@/components/VideoTile'
 import { ScreenSharePickerDialog } from '@/components/ScreenSharePickerDialog'
 import { AudioSettingsDialog } from '@/components/AudioSettingsDialog'
@@ -97,7 +98,6 @@ export function VoiceChannelView({
     if (connectedChannelId !== channel.id) {
       joinVoiceChannel(channel.id, currentUserId, server.id, channel.name)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [channel.id, currentUserId, server.id, permissionsLoading, canConnectVoice, isPreviewing])
 
   const tiles: Tile[] = participants.map((participant) => {
@@ -311,44 +311,6 @@ export function VoiceChannelView({
 
       <AudioSettingsDialog open={audioSettingsOpen} onOpenChange={setAudioSettingsOpen} />
     </section>
-  )
-}
-
-export function ControlButton({
-  onClick,
-  active,
-  label,
-  activeColor = 'destructive',
-  disabled = false,
-  children,
-}: {
-  onClick: () => void
-  active: boolean
-  label: string
-  activeColor?: 'destructive' | 'primary'
-  disabled?: boolean
-  children: React.ReactNode
-}) {
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <button
-          type="button"
-          onClick={onClick}
-          disabled={disabled}
-          aria-pressed={active}
-          aria-label={label}
-          className={cn(
-            'flex size-9 items-center justify-center rounded-full text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-40',
-            active && activeColor === 'destructive' && 'bg-destructive/10 text-destructive',
-            active && activeColor === 'primary' && 'bg-primary/10 text-primary'
-          )}
-        >
-          {children}
-        </button>
-      </TooltipTrigger>
-      <TooltipContent side="top">{label}</TooltipContent>
-    </Tooltip>
   )
 }
 

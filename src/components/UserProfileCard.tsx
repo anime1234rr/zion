@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { Check, Crown, MessageSquare, UserPlus } from 'lucide-react'
 
 import { enviarSolicitudAmistad } from '@/lib/friends'
@@ -20,7 +20,11 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import { AccountSettingsPanel } from '@/components/account-settings/AccountSettingsPanel'
+const AccountSettingsPanel = lazy(() =>
+  import('@/components/account-settings/AccountSettingsPanel').then((m) => ({
+    default: m.AccountSettingsPanel,
+  }))
+)
 
 const statusColor: Record<UserStatus, string> = {
   online: 'bg-online',
@@ -46,7 +50,7 @@ function formatFecha(iso: string): string {
 
 interface UserProfileCardProps {
   userId: string
-  server: ServerItem
+  server?: ServerItem
   currentUserId: string
   children: React.ReactNode
   onMessageUser?: (userId: string) => void
@@ -82,7 +86,7 @@ export function UserProfileCard({
   }
 
   const isOwnProfile = userId === currentUserId
-  const isServerOwner = userId === server.ownerId
+  const isServerOwner = server ? userId === server.ownerId : false
 
   useEffect(() => {
     if (!open) return
@@ -90,7 +94,7 @@ export function UserProfileCard({
 
     Promise.all([
       obtenerPerfilPublico(userId),
-      obtenerMembresiaDeUsuario(server.id, userId),
+      server ? obtenerMembresiaDeUsuario(server.id, userId) : Promise.resolve(null),
     ])
       .then(([p, m]) => {
         if (cancelado) return
@@ -104,7 +108,7 @@ export function UserProfileCard({
     return () => {
       cancelado = true
     }
-  }, [open, userId, server.id])
+  }, [open, userId, server?.id])
 
   return (
     <>
@@ -262,24 +266,26 @@ export function UserProfileCard({
       </Popover>
 
       {isOwnProfile && profile && (
-        <AccountSettingsPanel
-          open={editOpen}
-          onOpenChange={setEditOpen}
-          initialSection="perfil"
-          currentUser={
-            {
-              id: userId,
-              name: profile.nombreCompleto || profile.nombreUsuario,
-              avatarUrl: profile.avatarUrl,
-              status: profile.status,
-            } satisfies ChatUser
-          }
-          onProfileUpdated={() => {
-            obtenerPerfilPublico(userId)
-              .then(setProfile)
-              .catch(() => {})
-          }}
-        />
+        <Suspense fallback={null}>
+          <AccountSettingsPanel
+            open={editOpen}
+            onOpenChange={setEditOpen}
+            initialSection="perfil"
+            currentUser={
+              {
+                id: userId,
+                name: profile.nombreCompleto || profile.nombreUsuario,
+                avatarUrl: profile.avatarUrl,
+                status: profile.status,
+              } satisfies ChatUser
+            }
+            onProfileUpdated={() => {
+              obtenerPerfilPublico(userId)
+                .then(setProfile)
+                .catch(() => {})
+            }}
+          />
+        </Suspense>
       )}
     </>
   )

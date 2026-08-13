@@ -9,7 +9,7 @@ import {
   useVoiceConnection,
 } from '@/hooks/use-voice-connection'
 import { VideoTile } from '@/components/VideoTile'
-import { ControlButton } from '@/components/VoiceChannelView'
+import { ControlButton } from '@/components/ControlButton'
 
 interface FocusTile {
   name: string

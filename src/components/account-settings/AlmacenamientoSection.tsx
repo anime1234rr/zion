@@ -1,14 +1,25 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { FolderOpen, Trash2 } from 'lucide-react'
 
-import { clearCache, openUserDataFolder } from '@/lib/electron-bridge'
+import { clearCache, getStartOnLogin, openUserDataFolder, setStartOnLogin } from '@/lib/electron-bridge'
 import { getErrorMessage } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
+import { Switch } from '@/components/ui/switch'
 
 export function AlmacenamientoSection() {
   const [clearing, setClearing] = useState(false)
   const [cleared, setCleared] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [startOnLogin, setStartOnLoginState] = useState(false)
+
+  useEffect(() => {
+    getStartOnLogin().then(setStartOnLoginState)
+  }, [])
+
+  function handleToggleStartOnLogin(checked: boolean) {
+    setStartOnLoginState(checked)
+    setStartOnLogin(checked)
+  }
 
   async function handleClearCache() {
     setClearing(true)
@@ -33,6 +44,16 @@ export function AlmacenamientoSection() {
       </p>
 
       <div className="mt-6 flex flex-col gap-4">
+        <div className="flex items-center justify-between gap-4 rounded-lg border border-border p-3">
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-foreground">Iniciar con el sistema</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Abre Zion automáticamente al iniciar sesión en tu computadora.
+            </p>
+          </div>
+          <Switch checked={startOnLogin} onCheckedChange={handleToggleStartOnLogin} />
+        </div>
+
         <div className="flex items-center justify-between gap-4 rounded-lg border border-border p-3">
           <div className="min-w-0">
             <p className="text-sm font-medium text-foreground">Borrar caché</p>

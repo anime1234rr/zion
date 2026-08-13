@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   DndContext,
   DragOverlay,
+  MeasuringStrategy,
   PointerSensor,
   closestCenter,
   useDroppable,
@@ -204,6 +205,83 @@ function VoiceChannelMembers({
   )
 }
 
+function categoryDropZoneId(categoryId: string) {
+  return `dropzone:${categoryId}`
+}
+
+function SortableCategoryBlock({
+  category,
+  isCollapsed,
+  canManage,
+  onToggle,
+  onCreateChannel,
+  onEditCategory,
+  children,
+}: {
+  category: ChannelCategory
+  isCollapsed: boolean
+  canManage: boolean
+  onToggle: () => void
+  onCreateChannel: () => void
+  onEditCategory: () => void
+  children: React.ReactNode
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: category.id,
+    data: { type: 'category' },
+    disabled: !canManage,
+    animateLayoutChanges: () => false,
+  })
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.4 : 1,
+  }
+
+  return (
+    <div ref={setNodeRef} style={style} className="touch-none">
+      <div className="group/category flex items-center gap-1" {...attributes} {...listeners}>
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-expanded={!isCollapsed}
+          className="flex min-w-0 flex-1 items-center gap-1 rounded-md px-1.5 py-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase outline-none hover:text-sidebar-foreground focus-visible:ring-3 focus-visible:ring-ring/50"
+        >
+          <ChevronDown
+            className={cn(
+              'size-3 shrink-0 transition-transform duration-150',
+              isCollapsed && '-rotate-90'
+            )}
+          />
+          <span className="truncate">{category.name}</span>
+        </button>
+        {canManage && (
+          <button
+            type="button"
+            onClick={onCreateChannel}
+            aria-label={`Crear canal en ${category.name}`}
+            className="hidden shrink-0 rounded-md p-1 text-muted-foreground outline-none hover:text-sidebar-accent-foreground focus-visible:ring-3 focus-visible:ring-ring/50 group-hover/category:block"
+          >
+            <Plus className="size-3.5" />
+          </button>
+        )}
+        {canManage && (
+          <button
+            type="button"
+            onClick={onEditCategory}
+            aria-label={`Editar categoría ${category.name}`}
+            className="hidden shrink-0 rounded-md p-1 text-muted-foreground outline-none hover:text-sidebar-accent-foreground focus-visible:ring-3 focus-visible:ring-ring/50 group-hover/category:block"
+          >
+            <Settings className="size-3.5" />
+          </button>
+        )}
+      </div>
+      {children}
+    </div>
+  )
+}
+
 function CategoryDropZone({
   category,
   activeChannelId,
@@ -225,7 +303,10 @@ function CategoryDropZone({
   speakingUserIds: Set<string>
   previewPermissionsByChannel?: Record<string, ChannelPreviewPermissions>
 }) {
-  const { setNodeRef } = useDroppable({ id: category.id, data: { type: 'category' } })
+  const { setNodeRef } = useDroppable({
+    id: categoryDropZoneId(category.id),
+    data: { type: 'category' },
+  })
 
   return (
     <SortableContext
@@ -322,6 +403,7 @@ export function PanelCanales({
   const [editingCategory, setEditingCategory] = useState<ChannelCategory | null>(null)
   const [localCategories, setLocalCategories] = useState(categories)
   const [activeDragChannel, setActiveDragChannel] = useState<ChannelItem | null>(null)
+  const [activeDragCategory, setActiveDragCategory] = useState<ChannelCategory | null>(null)
   const [reorderError, setReorderError] = useState<string | null>(null)
   const isDraggingRef = useRef(false)
   const dragSnapshotRef = useRef<ChannelCategory[] | null>(null)
@@ -352,6 +434,10 @@ export function PanelCanales({
   const voiceChannelIds = useMemo(
     () => categories.flatMap((cat) => cat.channels.filter((c) => c.type === 'voice').map((c) => c.id)),
     [categories]
+  )
+  const sortableCategoryIds = useMemo(
+    () => localCategories.filter((cat) => cat.id !== UNCATEGORIZED_ID).map((cat) => cat.id),
+    [localCategories]
   )
 
   useEffect(() => {
@@ -419,6 +505,13 @@ export function PanelCanales({
     isDraggingRef.current = true
     dragSnapshotRef.current = localCategories
     setReorderError(null)
+
+    if (event.active.data.current?.type === 'category') {
+      const category = localCategories.find((cat) => cat.id === event.active.id)
+      if (category) setActiveDragCategory(category)
+      return
+    }
+
     const loc = findChannelLocation(localCategories, String(event.active.id))
     if (loc) setActiveDragChannel(localCategories[loc.categoryIndex].channels[loc.channelIndex])
   }
@@ -430,11 +523,17 @@ export function PanelCanales({
     const overId = String(over.id)
     if (activeId === overId) return
 
+    if (active.data.current?.type === 'category') {
+      return
+    }
+
     setLocalCategories((prev) => {
       const activeLoc = findChannelLocation(prev, activeId)
       if (!activeLoc) return prev
 
-      let overCategoryIndex = prev.findIndex((cat) => cat.id === overId)
+      let overCategoryIndex = prev.findIndex(
+        (cat) => cat.id === overId || categoryDropZoneId(cat.id) === overId
+      )
       let overChannelIndex = -1
       if (overCategoryIndex === -1) {
         const overLoc = findChannelLocation(prev, overId)
@@ -484,13 +583,58 @@ export function PanelCanales({
     }
   }
 
+  async function persistCategoryOrder(cats: ChannelCategory[]) {
+    const cambios: ReordenCanal[] = []
+    let posicion = 0
+    cats.forEach((category) => {
+      if (category.id === UNCATEGORIZED_ID) return
+      cambios.push({ canalId: category.id, categoriaId: null, posicion })
+      posicion += 1
+    })
+
+    try {
+      await reordenarCanales(server.id, cambios)
+      onChannelUpdated?.()
+    } catch (err) {
+      setReorderError(getErrorMessage(err))
+      if (dragSnapshotRef.current) setLocalCategories(dragSnapshotRef.current)
+    }
+  }
+
   function handleDragEnd(event: DragEndEvent) {
     isDraggingRef.current = false
+    const wasCategory = event.active.data.current?.type === 'category'
     setActiveDragChannel(null)
+    setActiveDragCategory(null)
     if (!event.over) {
       dragSnapshotRef.current = null
       return
     }
+
+    if (wasCategory) {
+      const activeId = String(event.active.id)
+      const overId = String(event.over.id)
+      setLocalCategories((prev) => {
+        const activeIndex = prev.findIndex((cat) => cat.id === activeId)
+        let overIndex = prev.findIndex((cat) => cat.id === overId)
+        if (overIndex === -1) {
+          overIndex = prev.findIndex((cat) => categoryDropZoneId(cat.id) === overId)
+        }
+        if (overIndex === -1) {
+          const channelLoc = findChannelLocation(prev, overId)
+          if (channelLoc) overIndex = channelLoc.categoryIndex
+        }
+        if (activeIndex === -1 || overIndex === -1 || prev[overIndex].id === UNCATEGORIZED_ID) {
+          return prev
+        }
+        const next = arrayMove(prev, activeIndex, overIndex)
+        persistCategoryOrder(next)
+        return next
+      })
+      dragSnapshotRef.current = null
+      return
+    }
+
     setLocalCategories((current) => {
       persistOrder(current)
       return current
@@ -501,6 +645,7 @@ export function PanelCanales({
   function handleDragCancel() {
     isDraggingRef.current = false
     setActiveDragChannel(null)
+    setActiveDragCategory(null)
     if (dragSnapshotRef.current) setLocalCategories(dragSnapshotRef.current)
     dragSnapshotRef.current = null
   }
@@ -589,79 +734,58 @@ export function PanelCanales({
         <DndContext
           sensors={sensors}
           collisionDetection={closestCenter}
+          measuring={{ droppable: { strategy: MeasuringStrategy.WhileDragging } }}
+          autoScroll={false}
           onDragStart={handleDragStart}
           onDragOver={handleDragOver}
           onDragEnd={handleDragEnd}
           onDragCancel={handleDragCancel}
         >
           <nav aria-label="Canales" className="flex flex-col gap-3 px-2 py-3">
-            {localCategories.map((category) => {
-              const isUncategorized = category.id === UNCATEGORIZED_ID
-              const isCollapsed = !isUncategorized && collapsed.has(category.id)
-              return (
-                <div key={category.id}>
-                  {!isUncategorized && (
-                    <div className="group/category flex items-center gap-1">
-                      <button
-                        type="button"
-                        onClick={() => toggleCategory(category.id)}
-                        aria-expanded={!isCollapsed}
-                        className="flex min-w-0 flex-1 items-center gap-1 rounded-md px-1.5 py-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase outline-none hover:text-sidebar-foreground focus-visible:ring-3 focus-visible:ring-ring/50"
-                      >
-                        <ChevronDown
-                          className={cn(
-                            'size-3 shrink-0 transition-transform duration-150',
-                            isCollapsed && '-rotate-90'
-                          )}
-                        />
-                        <span className="truncate">{category.name}</span>
-                      </button>
-                      {puedeGestionarCanales && (
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setCreateChannelTarget({
-                              categoriaId: category.id,
-                              posicion: category.channels.length,
-                            })
-                          }
-                          aria-label={`Crear canal en ${category.name}`}
-                          className="hidden shrink-0 rounded-md p-1 text-muted-foreground outline-none hover:text-sidebar-accent-foreground focus-visible:ring-3 focus-visible:ring-ring/50 group-hover/category:block"
-                        >
-                          <Plus className="size-3.5" />
-                        </button>
-                      )}
-                      {puedeGestionarCanales && (
-                        <button
-                          type="button"
-                          onClick={() => setEditingCategory(category)}
-                          aria-label={`Editar categoría ${category.name}`}
-                          className="hidden shrink-0 rounded-md p-1 text-muted-foreground outline-none hover:text-sidebar-accent-foreground focus-visible:ring-3 focus-visible:ring-ring/50 group-hover/category:block"
-                        >
-                          <Settings className="size-3.5" />
-                        </button>
-                      )}
-                    </div>
-                  )}
+            <SortableContext items={sortableCategoryIds} strategy={verticalListSortingStrategy}>
+              {localCategories.map((category) => {
+                const isUncategorized = category.id === UNCATEGORIZED_ID
+                const isCollapsed = !isUncategorized && collapsed.has(category.id)
+                const dropZone = (isUncategorized || !isCollapsed) && (
+                  <CategoryDropZone
+                    category={category}
+                    activeChannelId={activeChannelId}
+                    canManage={puedeGestionarCanales}
+                    onSelectChannel={onSelectChannel}
+                    onEditChannel={setEditingChannel}
+                    voiceRoster={voiceRoster}
+                    connectedVoiceChannelId={connectedChannelId}
+                    speakingUserIds={speakingUserIds}
+                    previewPermissionsByChannel={
+                      previewRole && !preview.loading ? preview.permissionsByChannel : undefined
+                    }
+                  />
+                )
 
-                  {(isUncategorized || !isCollapsed) && (
-                    <CategoryDropZone
-                      category={category}
-                      activeChannelId={activeChannelId}
-                      canManage={puedeGestionarCanales}
-                      onSelectChannel={onSelectChannel}
-                      onEditChannel={setEditingChannel}
-                      voiceRoster={voiceRoster}
-                      connectedVoiceChannelId={connectedChannelId}
-                      speakingUserIds={speakingUserIds}
-                      previewPermissionsByChannel={
-                        previewRole && !preview.loading ? preview.permissionsByChannel : undefined
-                      }
-                    />
-                  )}
-                </div>
-              )
-            })}
+                if (isUncategorized) {
+                  return <div key={category.id}>{dropZone}</div>
+                }
+
+                return (
+                  <SortableCategoryBlock
+                    key={category.id}
+                    category={category}
+                    isCollapsed={isCollapsed}
+                    canManage={puedeGestionarCanales}
+                    onToggle={() => toggleCategory(category.id)}
+                    onCreateChannel={() =>
+                      setCreateChannelTarget({
+                        categoriaId: category.id,
+                        posicion: category.channels.length,
+                      })
+                    }
+                    onEditCategory={() => setEditingCategory(category)}
+                  >
+                    {dropZone}
+                  </SortableCategoryBlock>
+                )
+              })}
+            </SortableContext>
           </nav>
 
           <DragOverlay>
@@ -673,6 +797,12 @@ export function PanelCanales({
                   return <Icon className="size-4 shrink-0" />
                 })()}
                 <span className="truncate">{activeDragChannel.name}</span>
+              </div>
+            )}
+            {activeDragCategory && (
+              <div className="flex items-center gap-1.5 rounded-md bg-sidebar-accent px-1.5 py-1 text-xs font-semibold tracking-wide text-sidebar-accent-foreground uppercase shadow-lg">
+                <GripVertical className="size-3.5 shrink-0 text-muted-foreground" />
+                <span className="truncate">{activeDragCategory.name}</span>
               </div>
             )}
           </DragOverlay>

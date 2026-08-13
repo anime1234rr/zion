@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Check,
   Code2,
@@ -50,13 +50,19 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { MediaViewerDialog } from '@/components/MediaViewerDialog'
+import { UserProfileCard } from '@/components/UserProfileCard'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { EmojiPicker } from '@/components/EmojiPicker'
 import { EmojiAutocomplete } from '@/components/EmojiAutocomplete'
 import { MessageReactions } from '@/components/MessageReactions'
 import { VoiceMessageRecorder } from '@/components/VoiceMessageRecorder'
 import { VoiceMessagePlayer } from '@/components/VoiceMessagePlayer'
+
+const MediaViewerDialog = lazy(() =>
+  import('@/components/MediaViewerDialog').then((m) => ({ default: m.MediaViewerDialog }))
+)
+const EmojiPicker = lazy(() =>
+  import('@/components/EmojiPicker').then((m) => ({ default: m.EmojiPicker }))
+)
 
 function messageToRawText(message: Pick<ChatMessage, 'content' | 'code'>): string {
   if (message.code) return formatFencedCode(message.code)
@@ -289,7 +295,9 @@ function MessageRow({
               </button>
             </PopoverTrigger>
             <PopoverContent side="top" align="end" className="w-auto p-0">
-              <EmojiPicker onSelect={handleToggleReaction} />
+              <Suspense fallback={null}>
+                <EmojiPicker onSelect={handleToggleReaction} />
+              </Suspense>
             </PopoverContent>
           </Popover>
 
@@ -333,12 +341,14 @@ function MessageRow({
       </ContextMenu>
 
       {viewerOpen && (
-        <MediaViewerDialog
-          open={viewerOpen}
-          onOpenChange={setViewerOpen}
-          attachment={message.attachment ?? null}
-          onForward={() => onForwardMessage(message)}
-        />
+        <Suspense fallback={null}>
+          <MediaViewerDialog
+            open={viewerOpen}
+            onOpenChange={setViewerOpen}
+            attachment={message.attachment ?? null}
+            onForward={() => onForwardMessage(message)}
+          />
+        </Suspense>
       )}
     </>
   )
@@ -388,7 +398,7 @@ export function DMChatPrincipal({
   const textareaRef = useRef<RichComposerInputHandle>(null)
   const dragCounterRef = useRef(0)
   const sendVoiceOnStopRef = useRef(false)
-  const groups = groupMessages(messages)
+  const groups = useMemo(() => groupMessages(messages), [messages])
   const { emojis, stickers } = useUserExpresiones(currentUserId)
   const customEmojiList = useMemo(() => [...emojis, ...stickers], [emojis, stickers])
   const emojiMap = useMemo(
@@ -525,7 +535,6 @@ export function DMChatPrincipal({
     if (!pendingVoiceBlob || !sendVoiceOnStopRef.current) return
     sendVoiceOnStopRef.current = false
     submitDraft()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingVoiceBlob])
 
   function handleSubmit(event: React.FormEvent) {
@@ -565,13 +574,20 @@ export function DMChatPrincipal({
       )}
 
       <header className="flex h-12 shrink-0 items-center gap-2 border-b border-border px-4">
-        <Avatar size="sm">
-          {otherUser.avatarUrl && <AvatarImage src={otherUser.avatarUrl} />}
-          <AvatarFallback>{otherUser.name.slice(0, 2).toUpperCase()}</AvatarFallback>
-        </Avatar>
-        <h1 className="min-w-0 shrink truncate text-sm font-semibold text-foreground">
-          {otherUser.name}
-        </h1>
+        <UserProfileCard userId={otherUser.id} currentUserId={currentUserId}>
+          <button
+            type="button"
+            className="flex min-w-0 items-center gap-2 rounded-md outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+          >
+            <Avatar size="sm">
+              {otherUser.avatarUrl && <AvatarImage src={otherUser.avatarUrl} />}
+              <AvatarFallback>{otherUser.name.slice(0, 2).toUpperCase()}</AvatarFallback>
+            </Avatar>
+            <h1 className="min-w-0 shrink truncate text-sm font-semibold text-foreground">
+              {otherUser.name}
+            </h1>
+          </button>
+        </UserProfileCard>
       </header>
 
       <div className="flex-1 overflow-y-auto">
@@ -581,13 +597,24 @@ export function DMChatPrincipal({
               key={`${group.author.id}-${index}`}
               className="flex items-start gap-3 rounded-md px-2 py-0.5 hover:bg-muted/30"
             >
-              <Avatar size="lg" className="mt-0.5 shrink-0">
-                {group.author.avatarUrl && <AvatarImage src={group.author.avatarUrl} />}
-                <AvatarFallback>{group.author.name.slice(0, 2).toUpperCase()}</AvatarFallback>
-              </Avatar>
+              <UserProfileCard userId={group.author.id} currentUserId={currentUserId}>
+                <button type="button" className="mt-0.5 shrink-0 rounded-full outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
+                  <Avatar size="lg">
+                    {group.author.avatarUrl && <AvatarImage src={group.author.avatarUrl} />}
+                    <AvatarFallback>{group.author.name.slice(0, 2).toUpperCase()}</AvatarFallback>
+                  </Avatar>
+                </button>
+              </UserProfileCard>
               <div className="min-w-0 flex-1">
                 <div className="flex items-baseline gap-2">
-                  <span className="text-sm font-semibold text-foreground">{group.author.name}</span>
+                  <UserProfileCard userId={group.author.id} currentUserId={currentUserId}>
+                    <button
+                      type="button"
+                      className="rounded-sm text-sm font-semibold text-foreground outline-none hover:underline focus-visible:ring-3 focus-visible:ring-ring/50"
+                    >
+                      {group.author.name}
+                    </button>
+                  </UserProfileCard>
                   <span className="text-xs text-muted-foreground">{group.timestamp}</span>
                 </div>
                 {group.items.map((message) => (
@@ -783,10 +810,12 @@ export function DMChatPrincipal({
               <TooltipContent side="top">Emoji</TooltipContent>
             </Tooltip>
             <PopoverContent side="top" align="end" className="w-auto p-0">
-              <EmojiPicker
-                onSelect={(emoji) => setDraft((prev) => prev + emoji)}
-                customEmojis={customEmojiList}
-              />
+              <Suspense fallback={null}>
+                <EmojiPicker
+                  onSelect={(emoji) => setDraft((prev) => prev + emoji)}
+                  customEmojis={customEmojiList}
+                />
+              </Suspense>
             </PopoverContent>
           </Popover>
 

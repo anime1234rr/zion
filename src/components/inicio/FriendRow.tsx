@@ -22,6 +22,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { UserProfileCard } from '@/components/UserProfileCard'
 
 const statusColor: Record<UserStatus, string> = {
   online: 'bg-online',
@@ -39,11 +40,12 @@ const statusLabel: Record<UserStatus, string> = {
 
 interface FriendRowProps {
   friend: Friend
+  currentUserId: string
   onMessage: (userId: string) => void
   onChanged: () => void
 }
 
-export function FriendRow({ friend, onMessage, onChanged }: FriendRowProps) {
+export function FriendRow({ friend, currentUserId, onMessage, onChanged }: FriendRowProps) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -62,23 +64,34 @@ export function FriendRow({ friend, onMessage, onChanged }: FriendRowProps) {
   return (
     <div className="flex flex-col gap-1 rounded-lg px-2 py-2 hover:bg-muted/50">
       <div className="flex items-center gap-3">
-        <Avatar>
-          {friend.user.avatarUrl && <AvatarImage src={friend.user.avatarUrl} />}
-          <AvatarFallback>{friend.user.name.slice(0, 2).toUpperCase()}</AvatarFallback>
-          {friend.status === 'aceptada' && (
-            <AvatarBadge className={statusColor[friend.user.status]} />
-          )}
-        </Avatar>
+        <UserProfileCard
+          userId={friend.user.id}
+          currentUserId={currentUserId}
+          onMessageUser={friend.status === 'aceptada' ? onMessage : undefined}
+        >
+          <button
+            type="button"
+            className="flex min-w-0 flex-1 items-center gap-3 rounded-md text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+          >
+            <Avatar>
+              {friend.user.avatarUrl && <AvatarImage src={friend.user.avatarUrl} />}
+              <AvatarFallback>{friend.user.name.slice(0, 2).toUpperCase()}</AvatarFallback>
+              {friend.status === 'aceptada' && (
+                <AvatarBadge className={statusColor[friend.user.status]} />
+              )}
+            </Avatar>
 
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium text-foreground">{friend.user.name}</p>
-          <p className="truncate text-xs text-muted-foreground">
-            {friend.status === 'aceptada' && statusLabel[friend.user.status]}
-            {friend.status === 'pendiente_enviada' && 'Solicitud enviada'}
-            {friend.status === 'pendiente_recibida' && 'Quiere ser tu amigo'}
-            {friend.status === 'bloqueada' && 'Bloqueado'}
-          </p>
-        </div>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-medium text-foreground">{friend.user.name}</p>
+              <p className="truncate text-xs text-muted-foreground">
+                {friend.status === 'aceptada' && statusLabel[friend.user.status]}
+                {friend.status === 'pendiente_enviada' && 'Solicitud enviada'}
+                {friend.status === 'pendiente_recibida' && 'Quiere ser tu amigo'}
+                {friend.status === 'bloqueada' && 'Bloqueado'}
+              </p>
+            </div>
+          </button>
+        </UserProfileCard>
 
         <div className="flex shrink-0 items-center gap-1">
           {friend.status === 'aceptada' && (

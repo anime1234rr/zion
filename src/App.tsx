@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { useAuth } from '@/hooks/use-auth'
 import { useSystemStatus } from '@/hooks/use-system-status'
 import { useChannelAccess } from '@/hooks/use-channel-access'
 import { useRolePreview } from '@/hooks/use-role-preview'
 import { cn } from '@/lib/utils'
-import { obtenerPerfil } from '@/lib/profiles'
+import { actualizarPerfil, obtenerPerfil } from '@/lib/profiles'
 import {
   iniciarHeartbeat,
   marcarConectado,
@@ -19,7 +19,8 @@ import {
 import { listarCanales, suscribirseACanalesDeServidor } from '@/lib/channels'
 import { suscribirseANotificaciones } from '@/lib/notifications'
 import { pushToast } from '@/hooks/use-toasts'
-import { leaveVoiceChannel, useVoiceConnection } from '@/hooks/use-voice-connection'
+import { updateAppBadge } from '@/lib/badge'
+import { leaveVoiceChannel, toggleDeafen, toggleMute, useVoiceConnection } from '@/hooks/use-voice-connection'
 import {
   editarMensaje,
   eliminarMensaje,
@@ -28,7 +29,19 @@ import {
   suscribirseACanal,
 } from '@/lib/messages'
 import { parseZionLink } from '@/lib/deep-links'
-import { getInitialDeepLink, onBeforeQuit, onDeepLink, readyToQuit } from '@/lib/electron-bridge'
+import {
+  getInitialDeepLink,
+  isWindowFocused,
+  onBeforeQuit,
+  onActive,
+  onDeepLink,
+  onIdle,
+  onNotificationClicked,
+  onToggleDeafenShortcut,
+  onToggleMuteShortcut,
+  readyToQuit,
+  showNativeNotification,
+} from '@/lib/electron-bridge'
 import type {
   ChannelCategory,
   ChatAttachment,
@@ -37,6 +50,7 @@ import type {
   CodeBlock,
   ReplyPreview,
   ServerItem,
+  UserStatus,
 } from '@/lib/types'
 import type { ServerRole } from '@/lib/members'
 
@@ -46,8 +60,6 @@ import { UpdateBadge } from '@/components/UpdateBadge'
 import { SidebarServidores } from '@/components/SidebarServidores'
 import { PanelCanales } from '@/components/PanelCanales'
 import { ChatPrincipal } from '@/components/ChatPrincipal'
-import { VoiceChannelView } from '@/components/VoiceChannelView'
-import { ForumChannelView } from '@/components/forum/ForumChannelView'
 import { VoiceFloatingPanel } from '@/components/VoiceFloatingPanel'
 import { WelcomeDashboard } from '@/components/WelcomeDashboard'
 import { PanelMiembros } from '@/components/PanelMiembros'
@@ -59,6 +71,21 @@ import { ForwardMessageDialog } from '@/components/ForwardMessageDialog'
 import { ToastViewport } from '@/components/ToastViewport'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { AppBackgroundLayer } from '@/components/AppBackgroundLayer'
+
+const VoiceChannelView = lazy(() =>
+  import('@/components/VoiceChannelView').then((m) => ({ default: m.VoiceChannelView }))
+)
+const ForumChannelView = lazy(() =>
+  import('@/components/forum/ForumChannelView').then((m) => ({ default: m.ForumChannelView }))
+)
+
+function ViewLoadingFallback() {
+  return (
+    <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
+      <p className="text-sm text-muted-foreground">Cargando…</p>
+    </div>
+  )
+}
 
 type ViewMode = 'server' | 'dm'
 
@@ -79,6 +106,37 @@ function AppShell({ userId }: { userId: string }) {
   function handleProfileUpdated(updated: ChatUser) {
     setProfile((prev) => (prev ? { ...prev, ...updated } : updated))
   }
+
+  const latestStatusRef = useRef<UserStatus | null>(null)
+  const autoIdleRef = useRef(false)
+
+  useEffect(() => {
+    latestStatusRef.current = profile?.status ?? null
+  }, [profile?.status])
+
+  useEffect(() => {
+    const unsubIdle = onIdle(() => {
+      if (latestStatusRef.current !== 'online') return
+      autoIdleRef.current = true
+      setProfile((prev) => (prev ? { ...prev, status: 'idle' } : prev))
+      actualizarPerfil(userId, { status: 'idle' }).catch((err) =>
+        console.error('No se pudo actualizar el estado a ausente', err)
+      )
+    })
+    const unsubActive = onActive(() => {
+      if (!autoIdleRef.current) return
+      autoIdleRef.current = false
+      setProfile((prev) => (prev ? { ...prev, status: 'online' } : prev))
+      actualizarPerfil(userId, { status: 'online' }).catch((err) =>
+        console.error('No se pudo restaurar el estado', err)
+      )
+    })
+    return () => {
+      unsubIdle()
+      unsubActive()
+    }
+  }, [userId])
+
   const [servers, setServers] = useState<ServerItem[]>([])
   const [activeServerId, setActiveServerId] = useState<string | null>(null)
   const [categories, setCategories] = useState<ChannelCategory[]>([])
@@ -101,6 +159,7 @@ function AppShell({ userId }: { userId: string }) {
   const [highlightMessageId, setHighlightMessageId] = useState<string | null>(null)
   const [previewRole, setPreviewRole] = useState<ServerRole | null>(null)
   const { connectedChannelId } = useVoiceConnection()
+  const notificationClickHandlers = useRef(new Map<number, () => void>())
 
   function handleSelectServer(serverId: string) {
     setView('server')
@@ -120,16 +179,43 @@ function AppShell({ userId }: { userId: string }) {
   }
 
   useEffect(() => {
+    return onNotificationClicked((id) => {
+      notificationClickHandlers.current.get(id)?.()
+      notificationClickHandlers.current.delete(id)
+    })
+  }, [])
+
+  useEffect(() => {
+    const unsubMute = onToggleMuteShortcut(() => toggleMute())
+    const unsubDeafen = onToggleDeafenShortcut(() => toggleDeafen())
+    return () => {
+      unsubMute()
+      unsubDeafen()
+    }
+  }, [])
+
+  useEffect(() => {
     return suscribirseANotificaciones(userId, (notificacion) => {
+      const onClick = notificacion.servidorId
+        ? () => handleSelectServer(notificacion.servidorId as string)
+        : notificacion.tipo === 'mensaje_privado' || notificacion.tipo === 'solicitud_amistad'
+          ? () => setView('dm')
+          : undefined
+
       pushToast({
         title: notificacion.titulo,
         description: notificacion.mensaje,
         icon: notificacion.tipo,
-        onClick: notificacion.servidorId
-          ? () => handleSelectServer(notificacion.servidorId as string)
-          : notificacion.tipo === 'mensaje_privado' || notificacion.tipo === 'solicitud_amistad'
-            ? () => setView('dm')
-            : undefined,
+        onClick,
+      })
+
+      isWindowFocused().then((focused) => {
+        if (focused) return
+        showNativeNotification({ title: notificacion.titulo, body: notificacion.mensaje }).then(
+          (id) => {
+            if (id != null && onClick) notificationClickHandlers.current.set(id, onClick)
+          }
+        )
       })
     })
   }, [userId])
@@ -262,6 +348,11 @@ function AppShell({ userId }: { userId: string }) {
       unsubscribe()
     }
   }, [activeServerId])
+
+  useEffect(() => {
+    const totalMentions = servers.reduce((sum, server) => sum + (server.mentionCount ?? 0), 0)
+    updateAppBadge(totalMentions)
+  }, [servers])
 
   const activeServer = servers.find((s) => s.id === activeServerId)
 
@@ -460,21 +551,25 @@ function AppShell({ userId }: { userId: string }) {
           ) : null}
 
           {activeChannel && activeServer && activeChannel.type === 'voice' ? (
-            <VoiceChannelView
-              channel={activeChannel}
-              server={activeServer}
-              currentUserId={userId}
-              previewRole={previewRole}
-              previewPermissions={activePreviewPermissions}
-              previewLoading={rolePreview.loading}
-            />
+            <Suspense fallback={<ViewLoadingFallback />}>
+              <VoiceChannelView
+                channel={activeChannel}
+                server={activeServer}
+                currentUserId={userId}
+                previewRole={previewRole}
+                previewPermissions={activePreviewPermissions}
+                previewLoading={rolePreview.loading}
+              />
+            </Suspense>
           ) : activeChannel && activeServer && activeChannel.type === 'forum' ? (
-            <ForumChannelView
-              key={activeChannel.id}
-              channel={activeChannel}
-              server={activeServer}
-              currentUserId={userId}
-            />
+            <Suspense fallback={<ViewLoadingFallback />}>
+              <ForumChannelView
+                key={activeChannel.id}
+                channel={activeChannel}
+                server={activeServer}
+                currentUserId={userId}
+              />
+            </Suspense>
           ) : activeChannel && activeServer ? (
             <ChatPrincipal
               channel={activeChannel}

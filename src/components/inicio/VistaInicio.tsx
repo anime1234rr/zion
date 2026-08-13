@@ -100,7 +100,6 @@ export function VistaInicio({
   useEffect(() => {
     if (!pendingUserId) return
     handleMessageUser(pendingUserId).finally(() => onPendingUserHandled?.())
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingUserId])
 
   useEffect(() => {
@@ -121,7 +120,6 @@ export function VistaInicio({
     return () => {
       cancelado = true
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingConversation])
 
   useEffect(() => {

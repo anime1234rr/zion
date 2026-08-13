@@ -42,6 +42,41 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.send('zion:open-external', url)
   },
   writeClipboard: (text: string): Promise<void> => ipcRenderer.invoke('zion:write-clipboard', text),
+  isWindowFocused: (): Promise<boolean> => ipcRenderer.invoke('zion:is-window-focused'),
+  showNotification: (payload: { title: string; body?: string }): Promise<number> =>
+    ipcRenderer.invoke('zion:show-notification', payload),
+  onNotificationClicked: (callback: (id: number) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, id: number) => callback(id)
+    ipcRenderer.on('zion-notification-clicked', listener)
+    return () => ipcRenderer.removeListener('zion-notification-clicked', listener)
+  },
+  setBadgeCount: (count: number, overlayIconDataUrl: string | null): void => {
+    ipcRenderer.send('zion:set-badge-count', count, overlayIconDataUrl)
+  },
+  onToggleMuteShortcut: (callback: () => void): (() => void) => {
+    const listener = () => callback()
+    ipcRenderer.on('zion-toggle-mute', listener)
+    return () => ipcRenderer.removeListener('zion-toggle-mute', listener)
+  },
+  onToggleDeafenShortcut: (callback: () => void): (() => void) => {
+    const listener = () => callback()
+    ipcRenderer.on('zion-toggle-deafen', listener)
+    return () => ipcRenderer.removeListener('zion-toggle-deafen', listener)
+  },
+  onIdle: (callback: () => void): (() => void) => {
+    const listener = () => callback()
+    ipcRenderer.on('zion-idle', listener)
+    return () => ipcRenderer.removeListener('zion-idle', listener)
+  },
+  onActive: (callback: () => void): (() => void) => {
+    const listener = () => callback()
+    ipcRenderer.on('zion-active', listener)
+    return () => ipcRenderer.removeListener('zion-active', listener)
+  },
+  getStartOnLogin: (): Promise<boolean> => ipcRenderer.invoke('zion:get-start-on-login'),
+  setStartOnLogin: (enabled: boolean): void => {
+    ipcRenderer.send('zion:set-start-on-login', enabled)
+  },
   listScreenSources: (): Promise<ScreenSourcePayload[]> =>
     ipcRenderer.invoke('zion:list-screen-sources'),
   selectScreenSource: (sourceId: string, includeAudio: boolean): void => {

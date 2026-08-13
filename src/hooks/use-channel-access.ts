@@ -18,6 +18,7 @@ export function useChannelAccess(
     [categories]
   )
   const allChannelIds = useMemo(() => allChannels.map((channel) => channel.id), [allChannels])
+  const loadingHidden = useMemo(() => new Set(allChannelIds), [allChannelIds])
   const [state, setState] = useState<{ loaded: boolean; hidden: Set<string> }>({
     loaded: false,
     hidden: new Set(),
@@ -101,5 +102,5 @@ export function useChannelAccess(
   }, [server?.id, server?.ownerId, userId, isOwner, allChannelIds, allChannels])
 
   if (isOwner) return EMPTY_SET
-  return state.loaded ? state.hidden : new Set(allChannelIds)
+  return state.loaded ? state.hidden : loadingHidden
 }
