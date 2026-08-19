@@ -13,9 +13,12 @@ import {
   Sliders,
 } from 'lucide-react'
 
+import { XIcon } from 'lucide-react'
+
 import { cn } from '@/lib/utils'
 import type { ChatUser } from '@/lib/types'
-import { Dialog, DialogContent } from '@/components/ui/dialog'
+import { Button } from '@/components/ui/button'
+import { Dialog, DialogClose, DialogContent } from '@/components/ui/dialog'
 import { PerfilSection } from '@/components/account-settings/PerfilSection'
 import { VozVideoSection } from '@/components/account-settings/VozVideoSection'
 import { SeguridadSection } from '@/components/account-settings/SeguridadSection'
@@ -72,7 +75,10 @@ export function AccountSettingsPanel({
 }: AccountSettingsPanelProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex h-[min(720px,85vh)] w-[min(1040px,92vw)] max-w-none flex-row gap-0 overflow-hidden rounded-xl p-0 sm:max-w-none">
+      <DialogContent
+        showCloseButton={false}
+        className="flex h-[min(720px,85vh)] w-[min(1040px,92vw)] max-w-none flex-row gap-0 overflow-hidden rounded-xl p-0 sm:max-w-none"
+      >
         {open && (
           <AccountSettingsBody
             key={currentUser.id}
@@ -81,6 +87,12 @@ export function AccountSettingsPanel({
             onProfileUpdated={onProfileUpdated}
           />
         )}
+        <DialogClose asChild>
+          <Button variant="ghost" size="icon-sm" className="absolute top-2 right-5">
+            <XIcon />
+            <span className="sr-only">Cerrar</span>
+          </Button>
+        </DialogClose>
       </DialogContent>
     </Dialog>
   )

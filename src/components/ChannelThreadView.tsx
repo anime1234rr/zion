@@ -95,6 +95,7 @@ export function ChannelThreadView({
       setMessages((prev) => (prev.some((m) => m.id === nuevo.id) ? prev : [...prev, nuevo]))
       setReplyingTo(null)
       onThreadChanged()
+      return nuevo
     } catch (err) {
       console.error('No se pudo enviar el mensaje', err)
     }

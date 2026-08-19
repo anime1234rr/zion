@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Bell } from 'lucide-react'
 
 import {
@@ -21,6 +21,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { NotificationDetailDialog } from '@/components/NotificationDetailDialog'
+import { parseZionLink, type ZionLink } from '@/lib/deep-links'
 
 function formatRelativo(iso: string): string {
   const date = new Date(iso)
@@ -39,14 +40,23 @@ function formatRelativo(iso: string): string {
 interface NotificationsDropdownProps {
   userId: string
   onNavigateToServer?: (serverId: string) => void
+  onNavigateToLink?: (link: ZionLink) => void
 }
 
-export function NotificationsDropdown({ userId, onNavigateToServer }: NotificationsDropdownProps) {
+export function NotificationsDropdown({
+  userId,
+  onNavigateToServer,
+  onNavigateToLink,
+}: NotificationsDropdownProps) {
   const [notificaciones, setNotificaciones] = useState<AppNotification[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const [selectedNotification, setSelectedNotification] = useState<AppNotification | null>(null)
+  const navigateRef = useRef({ onNavigateToServer, onNavigateToLink })
+  useEffect(() => {
+    navigateRef.current = { onNavigateToServer, onNavigateToLink }
+  }, [onNavigateToServer, onNavigateToLink])
 
   useEffect(() => {
     let cancelado = false
@@ -63,7 +73,13 @@ export function NotificationsDropdown({ userId, onNavigateToServer }: Notificati
       const settings = getNotificationSettings()
       if (settings.soundOnNotification) playNotificationSound()
       if (settings.desktopNotifications && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-        new Notification(nueva.titulo, { body: nueva.mensaje })
+        const browserNotification = new Notification(nueva.titulo, { body: nueva.mensaje })
+        const link = nueva.enlace ? parseZionLink(nueva.enlace) : null
+        browserNotification.onclick = () => {
+          window.focus()
+          if (link) navigateRef.current.onNavigateToLink?.(link)
+          else if (nueva.servidorId) navigateRef.current.onNavigateToServer?.(nueva.servidorId)
+        }
       }
     })
 
@@ -186,6 +202,7 @@ export function NotificationsDropdown({ userId, onNavigateToServer }: Notificati
         notification={selectedNotification}
         onOpenChange={(open) => !open && setSelectedNotification(null)}
         onNavigateToServer={onNavigateToServer}
+        onNavigateToLink={onNavigateToLink}
       />
     </DropdownMenu>
   )

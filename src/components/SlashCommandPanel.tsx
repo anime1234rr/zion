@@ -207,8 +207,7 @@ export function SlashCommandPanel({
     setConfirmandoLimpiar(false)
   }
 
-  async function handleCrear(event: React.FormEvent) {
-    event.preventDefault()
+  async function handleCrear() {
     if (!nombreCrear.trim()) return
     setLoading(true)
     setError(null)
@@ -224,8 +223,7 @@ export function SlashCommandPanel({
     }
   }
 
-  async function handleRenombrar(event: React.FormEvent) {
-    event.preventDefault()
+  async function handleRenombrar() {
     if (!rolRenombrar || !nombreNuevo.trim()) return
     setLoading(true)
     setError(null)
@@ -358,8 +356,7 @@ export function SlashCommandPanel({
     }
   }
 
-  async function handleWarn(event: React.FormEvent) {
-    event.preventDefault()
+  async function handleWarn() {
     if (!usuarioModerado || !razon.trim()) return
     setLoading(true)
     setError(null)
@@ -397,7 +394,12 @@ export function SlashCommandPanel({
   }
 
   return (
-    <div className="mb-1.5 flex flex-col gap-2 rounded-xl border border-border bg-popover p-3 shadow-sm">
+    <div
+      className="mb-1.5 flex flex-col gap-2 rounded-xl border border-border bg-popover p-3 shadow-sm"
+      onKeyDown={(event) => {
+        if (event.key === 'Enter') event.preventDefault()
+      }}
+    >
       <div className="flex items-center gap-2">
         {step !== 'lista' && (
           <button
@@ -453,18 +455,29 @@ export function SlashCommandPanel({
       )}
 
       {step === 'crear' && (
-        <form onSubmit={handleCrear} className="flex items-center gap-2">
+        <div className="flex items-center gap-2">
           <Input
             ref={nombreCrearRef}
             value={nombreCrear}
             onChange={(event) => setNombreCrear(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                event.preventDefault()
+                handleCrear()
+              }
+            }}
             placeholder="Nombre del rol nuevo"
             className="h-8"
           />
-          <Button type="submit" size="sm" disabled={loading || !nombreCrear.trim()}>
+          <Button
+            type="button"
+            size="sm"
+            onClick={handleCrear}
+            disabled={loading || !nombreCrear.trim()}
+          >
             Crear
           </Button>
-        </form>
+        </div>
       )}
 
       {step === 'renombrar' && (
@@ -472,19 +485,30 @@ export function SlashCommandPanel({
           {!rolRenombrar ? (
             <RolePicker roles={roles} selected={rolRenombrar} onSelect={setRolRenombrar} />
           ) : (
-            <form onSubmit={handleRenombrar} className="flex items-center gap-2">
+            <div className="flex items-center gap-2">
               <span className="shrink-0 truncate text-xs text-muted-foreground">{rolRenombrar.nombre} →</span>
               <Input
                 autoFocus
                 value={nombreNuevo}
                 onChange={(event) => setNombreNuevo(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault()
+                    handleRenombrar()
+                  }
+                }}
                 placeholder="Nuevo nombre"
                 className="h-8"
               />
-              <Button type="submit" size="sm" disabled={loading || !nombreNuevo.trim()}>
+              <Button
+                type="button"
+                size="sm"
+                onClick={handleRenombrar}
+                disabled={loading || !nombreNuevo.trim()}
+              >
                 Guardar
               </Button>
-            </form>
+            </div>
           )}
         </div>
       )}
@@ -658,21 +682,32 @@ export function SlashCommandPanel({
           {!usuarioModerado ? (
             <UserPicker server={server} onSelect={setUsuarioModerado} />
           ) : (
-            <form onSubmit={handleWarn} className="flex flex-col gap-1.5">
+            <div className="flex flex-col gap-1.5">
               <SelectedUserRow user={usuarioModerado} />
               <div className="flex items-center gap-2">
                 <Input
                   autoFocus
                   value={razon}
                   onChange={(event) => setRazon(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      event.preventDefault()
+                      handleWarn()
+                    }
+                  }}
                   placeholder="Motivo de la advertencia"
                   className="h-8"
                 />
-                <Button type="submit" size="sm" disabled={loading || !razon.trim()}>
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={handleWarn}
+                  disabled={loading || !razon.trim()}
+                >
                   Advertir
                 </Button>
               </div>
-            </form>
+            </div>
           )}
         </div>
       )}

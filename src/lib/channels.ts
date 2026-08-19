@@ -10,8 +10,8 @@ interface CanalRow {
   tipo: string
   posicion: number
   categoria_id: string | null
-  es_privado: boolean
   creado_at: string
+  descripcion?: string | null
 }
 
 export function suscribirseACanalesDeServidor(
@@ -45,6 +45,7 @@ function mapCanalToChannelItem(row: CanalRow): ChannelItem {
     name: row.nombre,
     type: tipoCanalToChannelType[row.tipo] ?? 'text',
     categoryId: row.categoria_id,
+    topic: row.descripcion ?? undefined,
   }
 }
 
@@ -71,6 +72,7 @@ function agruparPorCategoria(rows: CanalRow[]): ChannelCategory[] {
     resultado.push({
       id: categoria.id,
       name: categoria.nombre,
+      description: categoria.descripcion ?? undefined,
       channels: canales
         .filter((row) => row.categoria_id === categoria.id)
         .map(mapCanalToChannelItem),
@@ -198,7 +200,12 @@ export async function crearCanalEnCategoria(
 export async function actualizarCanal(
   servidorId: string,
   canalId: string,
-  cambios: { nombre?: string; tipo?: ChannelType; categoriaId?: string | null; esPrivado?: boolean }
+  cambios: {
+    nombre?: string
+    tipo?: ChannelType
+    categoriaId?: string | null
+    descripcion?: string
+  }
 ): Promise<ChannelItem> {
   const { data, error } = await supabase
     .rpc('gestionar_canal_servidor', {
@@ -208,7 +215,7 @@ export async function actualizarCanal(
       p_nombre: cambios.nombre,
       p_tipo: cambios.tipo ? channelTypeToTipoCanal[cambios.tipo] : undefined,
       p_categoria_id: cambios.categoriaId,
-      p_es_privado: cambios.esPrivado,
+      p_descripcion: cambios.descripcion,
     })
     .single<CanalRow>()
 
@@ -216,6 +223,27 @@ export async function actualizarCanal(
   if (!data) throw new Error('No se pudo actualizar el canal.')
 
   return mapCanalToChannelItem(data)
+}
+
+export async function actualizarCategoria(
+  servidorId: string,
+  categoriaId: string,
+  cambios: { nombre?: string; descripcion?: string }
+): Promise<{ id: string; name: string; description?: string }> {
+  const { data, error } = await supabase
+    .rpc('gestionar_canal_servidor', {
+      p_accion: 'actualizar',
+      p_servidor_id: servidorId,
+      p_canal_id: categoriaId,
+      p_nombre: cambios.nombre,
+      p_descripcion: cambios.descripcion,
+    })
+    .single<CanalRow>()
+
+  if (error) throw error
+  if (!data) throw new Error('No se pudo actualizar la categoría.')
+
+  return { id: data.id, name: data.nombre, description: data.descripcion ?? undefined }
 }
 
 export async function eliminarCanal(servidorId: string, canalId: string): Promise<void> {

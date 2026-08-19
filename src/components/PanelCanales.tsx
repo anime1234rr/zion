@@ -879,6 +879,10 @@ export function PanelCanales({
         }}
         servidorId={server.id}
         category={editingCategory}
+        onUpdated={(updated) => {
+          onChannelUpdated?.()
+          setEditingCategory(updated)
+        }}
         onDeleted={(categoryId) => {
           onChannelDeleted?.(categoryId)
           setEditingCategory(null)

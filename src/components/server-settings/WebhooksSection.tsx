@@ -4,7 +4,7 @@ import { BookOpen, Bot, Check, Copy, Pencil, Plus, ShieldCheck, Trash2, Webhook 
 import { useTextChannels } from '@/hooks/use-text-channels'
 import { useServerPermissions } from '@/hooks/use-server-permissions'
 import { writeClipboard } from '@/lib/electron-bridge'
-import { subirAvatar } from '@/lib/storage'
+import { AVATAR_ACCEPT, subirAvatar } from '@/lib/storage'
 import {
   actualizarPerfilWebhook,
   crearWebhook,
@@ -417,7 +417,7 @@ function EditWebhookProfileDialog({
 
           <div className="flex items-center gap-3">
             <label className="group relative cursor-pointer">
-              <input type="file" accept="image/*" className="hidden" onChange={handlePickAvatar} />
+              <input type="file" accept={AVATAR_ACCEPT} className="hidden" onChange={handlePickAvatar} />
               <Avatar className="size-14">
                 {previewSrc && <AvatarImage src={previewSrc} />}
                 <AvatarFallback>
@@ -811,7 +811,7 @@ function EditAppProfileDialog({
 
           <div className="flex items-center gap-3">
             <label className="group relative cursor-pointer">
-              <input type="file" accept="image/*" className="hidden" onChange={handlePickAvatar} />
+              <input type="file" accept={AVATAR_ACCEPT} className="hidden" onChange={handlePickAvatar} />
               <Avatar className="size-14">
                 {previewSrc && <AvatarImage src={previewSrc} />}
                 <AvatarFallback>

@@ -24,7 +24,7 @@ import {
   X,
 } from 'lucide-react'
 
-import { buildChannelMessageLink } from '@/lib/deep-links'
+import { buildChannelMessageLink, type ZionLink } from '@/lib/deep-links'
 import { writeClipboard } from '@/lib/electron-bridge'
 import { renderMessageContent } from '@/lib/render-message-content'
 import { cn, getErrorMessage } from '@/lib/utils'
@@ -448,7 +448,7 @@ interface ChatPrincipalProps {
     code?: CodeBlockData
     attachment?: ChatAttachment
     respuestaAId?: string
-  }) => void
+  }) => Promise<ChatMessage | void> | void
   server: ServerItem
   currentUserId: string
   membersOpen?: boolean
@@ -462,6 +462,7 @@ interface ChatPrincipalProps {
   onCancelReply: () => void
   highlightMessageId?: string | null
   onNavigateToServer?: (serverId: string) => void
+  onNavigateToLink?: (link: ZionLink) => void
   onJumpToChannelMessage: (channelId: string, messageId: string) => void
   previewRole?: ServerRole | null
   previewPermissions?: ChannelPreviewPermissions
@@ -486,6 +487,7 @@ export function ChatPrincipal({
   onCancelReply,
   highlightMessageId,
   onNavigateToServer,
+  onNavigateToLink,
   onJumpToChannelMessage,
   disableThreads = false,
   previewRole,
@@ -740,14 +742,15 @@ export function ChatPrincipal({
       setUploading(false)
     }
 
-    onSendMessage({ ...parseFencedCode(draft), attachment, respuestaAId: replyingTo?.id })
-    notificarMencionados(draft)
+    Promise.resolve(
+      onSendMessage({ ...parseFencedCode(draft), attachment, respuestaAId: replyingTo?.id })
+    ).then((nuevo) => notificarMencionados(draft, nuevo?.id))
     setDraft('')
     setPendingFile(null)
     setPendingVoiceBlob(null)
   }
 
-  function notificarMencionados(contenido: string) {
+  function notificarMencionados(contenido: string, mensajeId?: string) {
     const mencionados = new Set<string>()
     const mentionPattern = /@([a-zA-Z0-9_]{1,32})/g
     let match: RegExpExecArray | null
@@ -759,6 +762,7 @@ export function ChatPrincipal({
     const remitente = mentionableMembers.find((m) => m.id === currentUserId)
     const titulo = `${remitente?.displayName ?? 'Alguien'} te mencionó en #${channel.name}`
     const preview = contenido.trim().slice(0, 120)
+    const enlace = mensajeId ? buildChannelMessageLink(server.id, channel.id, mensajeId) : null
 
     for (const member of mentionableMembers) {
       if (member.id === currentUserId) continue
@@ -768,6 +772,7 @@ export function ChatPrincipal({
         servidorId: server.id,
         titulo,
         mensaje: preview,
+        enlace,
       }).catch((err) => console.error('No se pudo notificar la mención', err))
     }
   }
@@ -854,7 +859,11 @@ export function ChatPrincipal({
         </div>
 
         <div className="ml-auto flex shrink-0 items-center gap-1">
-          <NotificationsDropdown userId={currentUserId} onNavigateToServer={onNavigateToServer} />
+          <NotificationsDropdown
+            userId={currentUserId}
+            onNavigateToServer={onNavigateToServer}
+            onNavigateToLink={onNavigateToLink}
+          />
 
           {!disableThreads && (
             <Tooltip>
@@ -1045,8 +1054,6 @@ export function ChatPrincipal({
           />
         )}
 
-        {!slashPanelOpen && (
-          <>
         {voiceRecorder.recording && (
           <VoiceMessageRecorder seconds={voiceRecorder.seconds} onCancel={voiceRecorder.cancel} />
         )}
@@ -1287,8 +1294,6 @@ export function ChatPrincipal({
             <Send className="size-4" />
           </button>
         </div>
-          </>
-        )}
       </form>
 
       <PinnedMessagesDialog

@@ -94,6 +94,7 @@ export function ForumThreadView({
       const nuevo = await enviarMensaje(thread.id, currentUserId, message)
       setMessages((prev) => (prev.some((m) => m.id === nuevo.id) ? prev : [...prev, nuevo]))
       setReplyingTo(null)
+      return nuevo
     } catch (err) {
       console.error('No se pudo enviar el mensaje', err)
     }

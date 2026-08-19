@@ -17,7 +17,7 @@ import {
 
 import { useAuth } from '@/hooks/use-auth'
 import { actualizarServidor, regenerarInvitacion } from '@/lib/servers'
-import { subirBannerServidor, subirIconoServidor } from '@/lib/storage'
+import { ICONO_SERVIDOR_ACCEPT, subirBannerServidor, subirIconoServidor } from '@/lib/storage'
 import { buildInviteLink } from '@/lib/deep-links'
 import { writeClipboard } from '@/lib/electron-bridge'
 import { cn, getErrorMessage } from '@/lib/utils'
@@ -319,7 +319,7 @@ export function GeneralSection({ server, canEdit, canManageInvites, onUpdated }:
           <input
             ref={bannerInputRef}
             type="file"
-            accept="image/*"
+            accept={ICONO_SERVIDOR_ACCEPT}
             className="hidden"
             onChange={handlePickBanner}
           />
@@ -353,7 +353,7 @@ export function GeneralSection({ server, canEdit, canManageInvites, onUpdated }:
           <input
             ref={fileInputRef}
             type="file"
-            accept="image/*"
+            accept={ICONO_SERVIDOR_ACCEPT}
             className="hidden"
             onChange={handlePickIcon}
           />

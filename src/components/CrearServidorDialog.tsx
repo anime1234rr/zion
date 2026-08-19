@@ -3,7 +3,7 @@ import { ImagePlus } from 'lucide-react'
 
 import { useAuth } from '@/hooks/use-auth'
 import { crearServidor } from '@/lib/servers'
-import { subirIconoServidor } from '@/lib/storage'
+import { ICONO_SERVIDOR_ACCEPT, subirIconoServidor } from '@/lib/storage'
 import { listarPlantillas, type PlantillaServidor } from '@/lib/templates'
 import { cn, getErrorMessage } from '@/lib/utils'
 import type { ServerItem } from '@/lib/types'
@@ -115,7 +115,7 @@ export function CrearServidorDialog({
             <input
               ref={fileInputRef}
               type="file"
-              accept="image/*"
+              accept={ICONO_SERVIDOR_ACCEPT}
               className="hidden"
               onChange={handlePickIcon}
             />

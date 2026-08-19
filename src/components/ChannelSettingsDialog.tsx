@@ -25,6 +25,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
+import { Textarea } from '@/components/ui/textarea'
 
 const tipos: { type: ChannelType; label: string; icon: typeof Hash }[] = [
   { type: 'text', label: 'Texto', icon: Hash },
@@ -86,12 +87,16 @@ function ChannelSettingsForm({
   const [tab, setTab] = useState<Tab>('resumen')
   const [nombre, setNombre] = useState(channel.name)
   const [tipo, setTipo] = useState<ChannelType>(channel.type)
+  const [descripcion, setDescripcion] = useState(channel.topic ?? '')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const [idCopied, setIdCopied] = useState(false)
 
-  const dirty = nombre.trim() !== channel.name || tipo !== channel.type
+  const dirty =
+    nombre.trim() !== channel.name ||
+    tipo !== channel.type ||
+    descripcion.trim() !== (channel.topic ?? '')
 
   async function handleGuardar(event: React.FormEvent) {
     event.preventDefault()
@@ -103,6 +108,7 @@ function ChannelSettingsForm({
       const actualizado = await actualizarCanal(servidorId, channel.id, {
         nombre: nombre.trim(),
         tipo,
+        descripcion: descripcion.trim(),
       })
       onUpdated(actualizado)
     } catch (err) {
@@ -196,6 +202,18 @@ function ChannelSettingsForm({
               value={nombre}
               onChange={(event) => setNombre(event.target.value)}
               required
+            />
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="descripcion_canal_editar">Descripción</Label>
+            <Textarea
+              id="descripcion_canal_editar"
+              value={descripcion}
+              onChange={(event) => setDescripcion(event.target.value)}
+              placeholder="Un resumen breve de para qué es este canal (opcional)."
+              rows={2}
+              maxLength={280}
             />
           </div>
 

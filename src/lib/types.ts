@@ -48,6 +48,7 @@ export interface ChannelItem {
 export interface ChannelCategory {
   id: string
   name: string
+  description?: string
   channels: ChannelItem[]
 }
 

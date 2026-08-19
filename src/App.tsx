@@ -28,7 +28,7 @@ import {
   listarMensajes,
   suscribirseACanal,
 } from '@/lib/messages'
-import { parseZionLink } from '@/lib/deep-links'
+import { parseZionLink, type ZionLink } from '@/lib/deep-links'
 import {
   getInitialDeepLink,
   isWindowFocused,
@@ -178,6 +178,20 @@ function AppShell({ userId }: { userId: string }) {
     setPendingDmUserId(targetUserId)
   }
 
+  function navigateToZionLink(link: ZionLink) {
+    if (link.type === 'channel-message') {
+      setView('server')
+      setActiveServerId(link.serverId)
+      setActiveChannelId(link.channelId)
+      setHighlightMessageId(link.messageId)
+    } else if (link.type === 'dm-message') {
+      setView('dm')
+      setPendingConversation({ conversationId: link.conversationId, messageId: link.messageId })
+    } else {
+      setPendingInviteCode(link.code)
+    }
+  }
+
   useEffect(() => {
     return onNotificationClicked((id) => {
       notificationClickHandlers.current.get(id)?.()
@@ -196,11 +210,14 @@ function AppShell({ userId }: { userId: string }) {
 
   useEffect(() => {
     return suscribirseANotificaciones(userId, (notificacion) => {
-      const onClick = notificacion.servidorId
-        ? () => handleSelectServer(notificacion.servidorId as string)
-        : notificacion.tipo === 'mensaje_privado' || notificacion.tipo === 'solicitud_amistad'
-          ? () => setView('dm')
-          : undefined
+      const link = notificacion.enlace ? parseZionLink(notificacion.enlace) : null
+      const onClick = link
+        ? () => navigateToZionLink(link)
+        : notificacion.servidorId
+          ? () => handleSelectServer(notificacion.servidorId as string)
+          : notificacion.tipo === 'mensaje_privado' || notificacion.tipo === 'solicitud_amistad'
+            ? () => setView('dm')
+            : undefined
 
       pushToast({
         title: notificacion.titulo,
@@ -265,18 +282,7 @@ function AppShell({ userId }: { userId: string }) {
     function handleDeepLink(url: string) {
       const link = parseZionLink(url)
       if (!link) return
-
-      if (link.type === 'channel-message') {
-        setView('server')
-        setActiveServerId(link.serverId)
-        setActiveChannelId(link.channelId)
-        setHighlightMessageId(link.messageId)
-      } else if (link.type === 'dm-message') {
-        setView('dm')
-        setPendingConversation({ conversationId: link.conversationId, messageId: link.messageId })
-      } else {
-        setPendingInviteCode(link.code)
-      }
+      navigateToZionLink(link)
     }
 
     getInitialDeepLink().then((url) => {
@@ -459,6 +465,7 @@ function AppShell({ userId }: { userId: string }) {
           prev.some((m) => m.id === nuevo.id) ? prev : [...prev, nuevo]
         )
         setReplyingTo(null)
+        return nuevo
       } catch (err) {
         console.error('No se pudo enviar el mensaje', err)
       }
@@ -593,6 +600,7 @@ function AppShell({ userId }: { userId: string }) {
               onCancelReply={() => setReplyingTo(null)}
               highlightMessageId={highlightMessageId}
               onNavigateToServer={handleSelectServer}
+              onNavigateToLink={navigateToZionLink}
               onJumpToChannelMessage={(channelId, messageId) => {
                 setActiveChannelId(channelId)
                 setHighlightMessageId(messageId)

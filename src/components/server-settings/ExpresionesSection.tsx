@@ -9,7 +9,7 @@ import {
   type ExpresionTipo,
   type ServerExpresion,
 } from '@/lib/expresiones'
-import { subirExpresionServidor } from '@/lib/storage'
+import { ICONO_SERVIDOR_ACCEPT, subirExpresionServidor } from '@/lib/storage'
 import { cn, getErrorMessage } from '@/lib/utils'
 import type { ServerItem } from '@/lib/types'
 import { Input } from '@/components/ui/input'
@@ -210,7 +210,7 @@ export function ExpresionesSection({ server, canEdit }: ExpresionesSectionProps)
               <input
                 ref={fileInputRef}
                 type="file"
-                accept="image/*"
+                accept={ICONO_SERVIDOR_ACCEPT}
                 className="hidden"
                 onChange={handleUpload}
               />

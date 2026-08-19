@@ -133,7 +133,7 @@ function CrearCanalForm({
           id="nombre_canal"
           value={nombre}
           onChange={(event) => setNombre(event.target.value)}
-          placeholder="nuevo-canal"
+          placeholder="nuevo canal"
           autoFocus
           required
         />

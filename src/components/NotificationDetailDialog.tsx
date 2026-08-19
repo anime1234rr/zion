@@ -1,6 +1,7 @@
 import { AtSign, Bell, Mail, ServerCog, UserPlus } from 'lucide-react'
 
 import type { AppNotification, NotificationType } from '@/lib/notifications'
+import { parseZionLink, type ZionLink } from '@/lib/deep-links'
 import {
   Dialog,
   DialogContent,
@@ -32,15 +33,18 @@ interface NotificationDetailDialogProps {
   notification: AppNotification | null
   onOpenChange: (open: boolean) => void
   onNavigateToServer?: (serverId: string) => void
+  onNavigateToLink?: (link: ZionLink) => void
 }
 
 export function NotificationDetailDialog({
   notification,
   onOpenChange,
   onNavigateToServer,
+  onNavigateToLink,
 }: NotificationDetailDialogProps) {
   const info = notification ? tipoInfo[notification.tipo] : null
   const Icon = info?.icon ?? Bell
+  const link = notification?.enlace ? parseZionLink(notification.enlace) : null
 
   return (
     <Dialog open={Boolean(notification)} onOpenChange={onOpenChange}>
@@ -70,25 +74,29 @@ export function NotificationDetailDialog({
               </div>
             </div>
 
-            {notification.enlace && (
-              <a
-                href={notification.enlace}
-                className="text-sm text-primary underline-offset-4 hover:underline"
-              >
-                {notification.enlace}
-              </a>
-            )}
-
-            {notification.servidorId && onNavigateToServer && (
+            {link && link.type !== 'invite' && onNavigateToLink ? (
               <Button
                 variant="outline"
                 onClick={() => {
-                  onNavigateToServer(notification.servidorId as string)
+                  onNavigateToLink(link)
                   onOpenChange(false)
                 }}
               >
-                Ir al servidor
+                {link.type === 'dm-message' ? 'Ir al mensaje' : 'Ir al mensaje en el canal'}
               </Button>
+            ) : (
+              notification.servidorId &&
+              onNavigateToServer && (
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    onNavigateToServer(notification.servidorId as string)
+                    onOpenChange(false)
+                  }}
+                >
+                  Ir al servidor
+                </Button>
+              )
             )}
           </>
         )}

@@ -68,6 +68,7 @@ export async function crearNotificacionMencion(params: {
   servidorId: string
   titulo: string
   mensaje: string
+  enlace?: string | null
 }): Promise<void> {
   const { error } = await supabase.rpc('crear_notificacion', {
     p_usuario_id: params.usuarioId,
@@ -75,7 +76,7 @@ export async function crearNotificacionMencion(params: {
     p_tipo: 'mencion',
     p_titulo: params.titulo,
     p_mensaje: params.mensaje,
-    p_enlace: null,
+    p_enlace: params.enlace ?? null,
   })
   if (error) throw error
 }

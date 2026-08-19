@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Plus } from 'lucide-react'
 
-import { eliminarCategoria } from '@/lib/channels'
+import { actualizarCategoria, eliminarCategoria } from '@/lib/channels'
 import { getErrorMessage } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import {
@@ -11,6 +11,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
 import { CanalPermisosEditor } from '@/components/ChannelSettingsDialog'
 import { CrearCanalDialog } from '@/components/CrearCanalDialog'
 import type { ChannelCategory } from '@/lib/types'
@@ -20,6 +23,7 @@ interface CategorySettingsDialogProps {
   onOpenChange: (open: boolean) => void
   servidorId: string
   category: ChannelCategory | null
+  onUpdated?: (category: ChannelCategory) => void
   onDeleted: (categoryId: string) => void
   onChannelCreated?: () => void
 }
@@ -29,6 +33,7 @@ export function CategorySettingsDialog({
   onOpenChange,
   servidorId,
   category,
+  onUpdated,
   onDeleted,
   onChannelCreated,
 }: CategorySettingsDialogProps) {
@@ -41,6 +46,7 @@ export function CategorySettingsDialog({
             servidorId={servidorId}
             category={category}
             onOpenChange={onOpenChange}
+            onUpdated={onUpdated}
             onDeleted={onDeleted}
             onChannelCreated={onChannelCreated}
           />
@@ -54,19 +60,45 @@ function CategorySettingsForm({
   servidorId,
   category,
   onOpenChange,
+  onUpdated,
   onDeleted,
   onChannelCreated,
 }: {
   servidorId: string
   category: ChannelCategory
   onOpenChange: (open: boolean) => void
+  onUpdated?: (category: ChannelCategory) => void
   onDeleted: (categoryId: string) => void
   onChannelCreated?: () => void
 }) {
+  const [nombre, setNombre] = useState(category.name)
+  const [descripcion, setDescripcion] = useState(category.description ?? '')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const [createChannelOpen, setCreateChannelOpen] = useState(false)
+
+  const dirty =
+    nombre.trim() !== category.name || descripcion.trim() !== (category.description ?? '')
+
+  async function handleGuardar(event: React.FormEvent) {
+    event.preventDefault()
+    if (!nombre.trim() || !dirty) return
+
+    setLoading(true)
+    setError(null)
+    try {
+      const actualizada = await actualizarCategoria(servidorId, category.id, {
+        nombre: nombre.trim(),
+        descripcion: descripcion.trim(),
+      })
+      onUpdated?.({ ...category, name: actualizada.name, description: actualizada.description })
+    } catch (err) {
+      setError(getErrorMessage(err))
+    } finally {
+      setLoading(false)
+    }
+  }
 
   async function handleEliminar() {
     if (!confirmingDelete) {
@@ -89,7 +121,7 @@ function CategorySettingsForm({
   return (
     <>
       <DialogHeader>
-        <div className="flex items-start justify-between gap-3">
+        <div className="flex items-start justify-between gap-3 pr-10">
           <div>
             <DialogTitle>{category.name || 'Categoría'}</DialogTitle>
             <DialogDescription>
@@ -113,6 +145,34 @@ function CategorySettingsForm({
           {error}
         </p>
       )}
+
+      <form onSubmit={handleGuardar} className="flex flex-col gap-4">
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="nombre_categoria_editar">Nombre de la categoría</Label>
+          <Input
+            id="nombre_categoria_editar"
+            value={nombre}
+            onChange={(event) => setNombre(event.target.value)}
+            required
+          />
+        </div>
+
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="descripcion_categoria_editar">Descripción</Label>
+          <Textarea
+            id="descripcion_categoria_editar"
+            value={descripcion}
+            onChange={(event) => setDescripcion(event.target.value)}
+            placeholder="Un resumen breve de para qué es esta categoría (opcional)."
+            rows={2}
+            maxLength={280}
+          />
+        </div>
+
+        <Button type="submit" disabled={loading || !nombre.trim() || !dirty} className="self-start">
+          {loading ? 'Guardando…' : 'Guardar cambios'}
+        </Button>
+      </form>
 
       <CanalPermisosEditor servidorId={servidorId} canalId={category.id} canalTipo="categoria" />
 

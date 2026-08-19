@@ -8,7 +8,7 @@ import {
   obtenerPerfilEditable,
   type EditableProfile,
 } from '@/lib/profiles'
-import { subirAvatar, subirBanner } from '@/lib/storage'
+import { AVATAR_ACCEPT, BANNER_ACCEPT, subirAvatar, subirBanner } from '@/lib/storage'
 import { parseBioRichText } from '@/lib/bio-format'
 import { cn, getErrorMessage } from '@/lib/utils'
 import type { ChatUser, UserStatus } from '@/lib/types'
@@ -238,7 +238,7 @@ export function ConfigurarPerfilForm({
             <input
               ref={fileInputRef}
               type="file"
-              accept="image/*"
+              accept={AVATAR_ACCEPT}
               className="hidden"
               onChange={handlePickAvatar}
             />
@@ -286,7 +286,7 @@ export function ConfigurarPerfilForm({
             <input
               ref={bannerInputRef}
               type="file"
-              accept="image/*"
+              accept={BANNER_ACCEPT}
               className="hidden"
               onChange={handlePickBanner}
             />
